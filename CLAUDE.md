@@ -16,6 +16,57 @@ any architectural decision, read the relevant Blueprint section before writing c
 
 ---
 
+## Dual-Backend Architecture — Critical Rule
+
+ASim uses two separate backend servers with a hard boundary between them.
+**No responsibility ever crosses this boundary.**
+
+```
+Frontend (React)
+      │
+      │  REST + WebSocket
+      ▼
+server/  (Node.js + Express)          ← "dev side" — everything user-facing
+  - Auth (JWT, OAuth)
+  - REST API routes (POST /simulate, GET /simulate/{id}, etc.)
+  - WebSocket server → streams round results to frontend
+  - Database read/write (SQLAlchemy via API or direct Postgres calls)
+  - Redis pub/sub subscriber
+  - X-API-Key extraction + forwarding to backend
+  - User management
+      │
+      │  Internal HTTP (localhost only)
+      ▼
+backend/  (Python + FastAPI)          ← "agent side" — simulation engine only
+  - Agent generation
+  - LLM calls (via llm/executor.py)
+  - Simulation orchestration
+  - Persuasion engine
+  - Output pipeline (verdict, narrative)
+  - Publishes round results to Redis channel
+```
+
+**Node handles:** auth, REST routes, WebSocket, DB queries, Redis pub/sub, OAuth, sessions.
+**FastAPI handles:** agents, LLM calls, simulation rounds, persuasion math, output generation.
+
+**Never add to FastAPI:** auth, user management, WebSocket endpoints, frontend-facing routes.
+**Never add to Node:** simulation logic, LLM calls, agent generation, persuasion formula.
+
+---
+
+## Current Build State
+
+| Layer | Status | Notes |
+|-------|--------|-------|
+| Frontend — public pages, auth, legal | ✅ Complete | Landing, About, HowItWorks, Help, Changelog, Login, Signup, ForgotPassword, ResetPassword, Terms, Privacy |
+| Frontend — app shell | ✅ Complete | Sidebar, TopBar, Navbar, Footer, RouteGuard |
+| Frontend — Dashboard, NewSimulation | ✅ Complete | |
+| Frontend — LiveSimulation, Report | ✅ Complete | Uses mock data; will wire to real WebSocket in Phase 2 |
+| Frontend — SimulationHistory, Settings, Profile, ApiKeySettings | 🔲 Stubs | Pages exist but are placeholder shells |
+| Backend — ALL modules | 🔲 Not started | Phase 1 build is next |
+
+---
+
 ## Repo Structure
 
 ```
@@ -23,12 +74,31 @@ asim/
 ├── CLAUDE.md                         # This file — read at the start of every session
 ├── .env                              # Local environment variables — never commit
 ├── .env.example                      # Committed template of all required env vars
-├── docker-compose.yml                # Local dev: Redis + Postgres
+├── docker-compose.yml                # Optional local dev: Redis + Postgres (primary: Supabase + Upstash)
 ├── docs/
 │   ├── ASim_Blueprint.docx           # Full system design reference
 │   └── ASim_Frontend.docx            # Frontend architecture and page specs
 │
-├── backend/
+├── server/                           # Node.js + Express — API layer (user-facing)
+│   ├── index.js                      # Express app entry point, port 3000
+│   ├── package.json                  # express, ws, pg, ioredis, jsonwebtoken, bcrypt, axios
+│   ├── routes/
+│   │   ├── auth.js                   # /api/v1/auth/* — register, login, logout, OAuth
+│   │   ├── simulation.js             # /api/v1/simulate/* — CRUD + pause/resume
+│   │   ├── agents.js                 # /api/v1/simulate/:id/agents/*
+│   │   └── events.js                 # /api/v1/simulate/:id/inject-event, /events
+│   ├── middleware/
+│   │   ├── auth.js                   # JWT verification → req.user
+│   │   └── apiKey.js                 # X-API-Key extraction → req.apiKey
+│   ├── websocket/
+│   │   └── server.js                 # ws upgrade → Redis subscribe → stream to client
+│   ├── services/
+│   │   ├── simulationService.js      # axios → FastAPI /internal/* endpoints
+│   │   └── redisService.js           # ioredis pub/sub client
+│   └── db/
+│       └── client.js                 # pg Pool → DATABASE_URL_NODE
+│
+├── backend/                          # Python + FastAPI — simulation engine (internal only)
 │   ├── main.py                       # FastAPI app entry point
 │   ├── config.py                     # All settings loaded from environment
 │   ├── requirements.txt
@@ -78,23 +148,21 @@ asim/
 │   │   ├── round_tasks.py            # Per-agent LLM call tasks (parallelized)
 │   │   └── simulation_tasks.py       # Full simulation lifecycle tasks
 │   │
-│   ├── api/                          # FastAPI route handlers
+│   ├── api/                          # FastAPI internal route handlers (not exposed to internet)
 │   │   ├── __init__.py
-│   │   ├── simulation.py             # POST /simulate, GET /simulate/{id}
-│   │   ├── agents.py                 # GET /agents, GET /agents/{id}
-│   │   ├── events.py                 # POST /simulate/{id}/inject
-│   │   └── websocket.py              # WS /ws/simulate/{id} — live stream
+│   │   ├── internal.py               # POST /internal/simulate/start, /internal/simulate/{id}/status
+│   │   └── health.py                 # GET /health — liveness check
 │   │
 │   └── db/                           # Database layer
 │       ├── __init__.py
-│       ├── database.py               # SQLAlchemy async engine, session factory
-│       ├── models.py                 # All SQLAlchemy ORM table definitions
-│       └── migrations/               # Alembic migration files
+│       ├── database.py               # SQLAlchemy async engine, Postgres session factory
+│       ├── models.py                 # All SQLAlchemy ORM table definitions (Postgres)
+│       ├── mongo.py                  # Motor async client, MongoDB collections
+│       └── migrations/               # Alembic migration files (Postgres only)
 │
 └── frontend/
     ├── index.html
-    ├── vite.config.ts
-    ├── tailwind.config.ts
+    ├── vite.config.ts            # Tailwind v4 loaded via @tailwindcss/vite plugin — no tailwind.config.ts needed
     ├── tsconfig.json
     ├── package.json
     │
@@ -167,17 +235,18 @@ asim/
             │   ├── UseCaseCards.tsx  # Policy, crisis, ethics cards
             │   └── CTABanner.tsx     # Final CTA section
             ├── simulation/           # Live simulation components
-            │   ├── AgentGraph.tsx    # React Flow social graph
+            │   ├── AgentGlobe.tsx    # Three.js 3D agent globe (social graph)
             │   ├── StanceBar.tsx     # Animated stance distribution bar
-            │   ├── AgentFeed.tsx     # Live agent message feed
+            │   ├── RoundFeed.tsx     # Live agent message feed
             │   ├── RoundControls.tsx # Pause, inject, add/remove agent
-            │   └── RoundTimeline.tsx # Round progress indicator
+            │   ├── RoundTimeline.tsx # Round progress indicator
+            │   ├── CommunityList.tsx # Detected community list display
+            │   └── TickerStrip.tsx   # Scrolling event ticker
             ├── report/               # Final report components
             │   ├── VerdictCard.tsx   # Dominant outcome + confidence
             │   ├── NarrativePanel.tsx # Editorial narrative arc
             │   ├── SpectrumChart.tsx  # Counterfactual probe results
-            │   ├── AgentCard.tsx     # Influential agent profile card
-            │   └── MetricCard.tsx    # Summary stat card
+            │   └── AgentCard.tsx     # Influential agent profile card
             └── ui/                   # Shared UI components
                 ├── ArchetypeBadge.tsx
                 ├── EmotionChip.tsx
@@ -191,7 +260,10 @@ asim/
                 ├── EmptyState.tsx
                 ├── ToastNotification.tsx
                 ├── InjectEventModal.tsx
-                └── AgentDetailDrawer.tsx
+                ├── AgentDetailDrawer.tsx
+                ├── MetricCard.tsx    # Summary stat card
+                ├── ActionTag.tsx     # Action type tag/badge
+                └── StatusPill.tsx    # Status indicator pill
 
 ```
 
@@ -217,8 +289,13 @@ ANTHROPIC_MODEL=claude-sonnet-4-6
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.1:8b
 
-# Database
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/asim
+# PostgreSQL
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/asim   # FastAPI
+DATABASE_URL_NODE=postgresql://user:password@localhost:5432/asim       # Node
+
+# MongoDB
+MONGODB_URL=mongodb+srv://user:password@cluster.mongodb.net/asim       # Atlas or local
+MONGODB_DB=asim
 
 # Redis
 REDIS_URL=redis://localhost:6379
@@ -226,9 +303,70 @@ REDIS_URL=redis://localhost:6379
 # Celery
 CELERY_BROKER_URL=redis://localhost:6379/0
 CELERY_RESULT_BACKEND=redis://localhost:6379/1
+
+# Application
+APP_ENV=development              # "development" or "production"
+SECRET_KEY=                      # 32-char random string — JWT signing + AES-256 API key encryption
+JWT_EXPIRY=7d
+
+# Server ports
+NODE_PORT=3000
+FASTAPI_PORT=8000
+FASTAPI_INTERNAL_URL=http://localhost:8000
+
+# OAuth
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+OAUTH_CALLBACK_BASE=http://localhost:3000
 ```
 
 ---
+
+Read CLAUDE.md and docs/ASim_Blueprint.docx before doing anything.
+Use the backend-builder skill for this session.
+You are running on Sonnet 4.6 — be precise and literal. 
+Follow the specifications exactly as written. 
+Do not infer or improvise architectural decisions.
+If something is unclear, state the ambiguity before proceeding.
+Active Python venv is at .venv/ — all pip installs use this venv.
+LLM_PROVIDER=ollama for all code in this session.
+
+Then build the following
+
+## Backend Prerequisites
+
+Before starting any backend session, verify all of these are in place:
+
+- Python 3.11+ installed — verify with `python --version`
+- Virtual environment at `.venv/` — activate before every session:
+  Windows: `.venv\Scripts\activate`
+  Mac/Linux: `source .venv/bin/activate`
+- If you see "module not found" errors, the venv is not active — activate it first
+- Ollama installed and running locally on port 11434
+  Pull the model: `ollama pull llama3.1:8b`
+  Verify: `ollama run llama3.1:8b "say hello"`
+- Supabase project created — connection string in `.env` DATABASE_URL
+- Upstash Redis created — URL in `.env` REDIS_URL
+- All secrets in `.env` — never committed to git
+- `LLM_PROVIDER=ollama` for all development and testing
+- `LLM_PROVIDER=anthropic` only for production deployment
+- Never run backend commands without activating venv first
+
+### Backend Session Preamble (use this every session)
+
+```
+Read CLAUDE.md and docs/ASim_Blueprint.docx before doing anything.
+Use the backend-builder skill for this session.
+You are running on Sonnet 4.6 — be precise and literal.
+Follow specifications exactly as written.
+Do not infer or improvise architectural decisions.
+If something is unclear, state the ambiguity before proceeding.
+Active Python venv is at .venv/ — all pip installs use this venv.
+LLM_PROVIDER=ollama for all code in this session.
+```
+
 
 ## LLM Abstraction Layer — Critical Pattern
 
@@ -296,23 +434,37 @@ In production, users provide their own Anthropic API key. The key is:
 
 ## Database Rules
 
-- ORM: SQLAlchemy 2.0 async. Never write raw SQL unless absolutely necessary.
-- All DB access goes through `db/database.py` session factory.
-- All table definitions live in `db/models.py` — never define tables elsewhere.
-- Schema changes always go through Alembic migrations — never alter tables manually.
-- Use `db/models.py` as the source of truth for data shapes. The Pydantic models
-  in `agents/models.py` mirror the DB models for API serialization.
+ASim uses **two databases**:
+- **PostgreSQL** — structured relational data (ACID, foreign keys)
+- **MongoDB** — high-volume document data (per-round logs, LLM responses)
 
-### Core Tables (from Blueprint Section 08)
+### PostgreSQL (SQLAlchemy 2.0 async + Alembic)
+- Never write raw SQL — SQLAlchemy ORM only
+- All DB access through `db/database.py` session factory
+- All table definitions in `db/models.py` — never elsewhere
+- Schema changes via Alembic migrations — never alter manually
+- Node reads Postgres directly via `pg` driver (`DATABASE_URL_NODE`)
 
-- `simulation_configs` — scenario, mode, agent count, rounds, domain, seed
+**Core Postgres tables:**
+- `users` — auth, accounts, OAuth provider info
+- `simulation_configs` — scenario, mode, agent count, rounds, domain, seed, status
 - `agent_profiles` — fixed identity: archetype, trait_vector, core_beliefs, voice_style
-- `agent_states` — per-agent per-round: stance, emotion, confidence, memory_text
 - `relationship_edges` — trust scores, interaction counts, betrayal flags
-- `round_logs` — full round transcript, community snapshot, stance distribution
-- `community_snapshots` — detected communities per round with member lists
-- `simulation_results` — final verdict, narrative, spectrum, hallucination level
+- `simulation_results` — final verdict, narrative, spectrum, top_agents, hallucination_level
 - `injected_events` — user-injected mid-simulation events
+
+### MongoDB (Motor async — Python, Mongoose — Node)
+- All MongoDB access through `db/mongo.py` in FastAPI (Phase 2)
+- Never raw dict inserts — always use typed Pydantic models before writing
+
+**Core MongoDB collections:**
+- `agent_states` — per-agent per-round mutable state (stance, emotion, memory_text)
+- `round_logs` — full verbose round transcripts with all agent actions
+- `community_snapshots` — Louvain community detection results per round
+- `agent_responses` — raw LLM prompt + response pairs (audit, debugging)
+- `memory_logs` — agent memory compression history
+
+**Why the split:** PostgreSQL handles data that needs relational integrity (who owns what simulation, which agents belong to which sim). MongoDB handles the write-heavy per-round data that grows as O(agents × rounds) and has variable shapes (transcripts, communities).
 
 ---
 
@@ -399,13 +551,21 @@ harder.
 
 ## API Design Rules
 
+### Node/Express (server/) — user-facing layer
 - All routes follow REST conventions
-- All request/response bodies use Pydantic models — never raw dicts
-- All endpoints are async
-- WebSocket route `/ws/simulate/{id}` streams JSON-serialized RoundLog per round
-- User's API key comes in as `X-API-Key` header — extract in a FastAPI dependency
+- Auth via JWT middleware on all protected routes
+- `X-API-Key` header extracted by `middleware/apiKey.js` and forwarded to FastAPI
+- WebSocket server at `/ws/simulate/:id` — subscribes to Redis channel, streams JSON to client
 - Never return internal error details to the client — log them, return generic message
 - All simulation endpoints require a simulation ID in the path after creation
+- Use `express-validator` for request validation — never trust raw body fields
+
+### FastAPI (backend/) — internal simulation engine
+- Internal-only endpoints under `/internal/*` — never exposed to internet
+- All request/response bodies use Pydantic models — never raw dicts
+- All endpoints are async
+- Publishes `RoundLog` JSON to Redis channel `sim:{id}:rounds` after each round
+- No auth on FastAPI — security enforced at the Node layer
 
 ---
 
@@ -416,15 +576,15 @@ harder.
 - All simulation state lives in Zustand stores — never in component local state
   unless it's purely UI state (hover, open/closed, etc.)
 - The user's API key lives in `configStore` and is sent as a header on every request
-- React Flow is used exclusively for the agent graph — do not use D3 or any other
-  graph library
+- Three.js (AgentGlobe.tsx) is used for the live simulation 3D agent globe — do not
+  use React Flow or D3 for the simulation view
 - Recharts is used exclusively for all charts — do not mix chart libraries
 - shadcn/ui components for all UI elements — do not introduce other component libraries
 - Tailwind for all styling — no CSS modules, no styled-components
 - Framer Motion for all animations — no CSS transitions on interactive elements,
   no other animation library
-- Three.js for the landing page hero WebGL particle network only — no other
-  Three.js usage outside HeroSection.tsx
+- Three.js for: (1) landing page hero WebGL particle network (HeroSection.tsx),
+  (2) live simulation 3D agent globe (AgentGlobe.tsx) — no other Three.js usage
 - Aurora borealis inspired color system — teal, cyan, viridian, mild blue, 
   purple, dark gradient. Full token system in ASim_Frontend.docx Section 01.
   Both dark mode (default) and light mode fully specified. Never hardcode 
@@ -527,7 +687,9 @@ If this works and the agents feel like different people, Phase 1 is done.
 
 - Never install a new dependency without checking if an existing one already covers it
 - Never store the user's API key in the database or log it anywhere
-- Never write raw SQL — use SQLAlchemy ORM
+- Never write raw SQL — use SQLAlchemy ORM (Python) or parameterized queries (Node)
+- Never add auth, sessions, or WebSocket endpoints to FastAPI (backend/) — those belong in Node (server/)
+- Never add simulation logic, LLM calls, or agent code to Node (server/) — those belong in FastAPI (backend/)
 - Never call the Anthropic SDK or Ollama directly outside of `llm/`
 - Never add frontend pages or routes beyond what is defined in
   docs/ASim_Frontend.docx without explicit instruction
