@@ -39,15 +39,21 @@ class ControlRequest(BaseModel):
 
 @router.post("/simulate/start", response_model=SimulationStartResponse)
 async def start_simulation(body: SimulationStartRequest) -> SimulationStartResponse:
-    """Kick off a simulation. Phase 2: dispatches Celery task."""
+    """Kick off a simulation via Celery task."""
     logger.info("start_simulation: id=%s scenario=%.50s", body.simulation_id, body.scenario)
-    # Phase 2: dispatch to Celery
-    # from tasks.simulation_tasks import run_full_simulation
-    # run_full_simulation.delay(body.simulation_id, body.api_key_redis_key or "")
+    from tasks.simulation_tasks import run_full_simulation  # noqa: PLC0415
+    run_full_simulation.delay(
+        body.simulation_id,
+        body.scenario,
+        body.agent_count,
+        body.rounds,
+        body.seed,
+        body.api_key_redis_key or "",
+    )
     return SimulationStartResponse(
         ok=True,
         simulation_id=body.simulation_id,
-        message="Simulation queued (Phase 2 Celery dispatch pending)",
+        message="Simulation queued",
     )
 
 
