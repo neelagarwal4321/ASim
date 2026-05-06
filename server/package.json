@@ -1,0 +1,30 @@
+{
+  "name": "asim-server",
+  "version": "0.1.0",
+  "description": "ASim Node/Express API gateway",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0",
+    "pg": "^8.13.1",
+    "mongoose": "^8.8.3",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "bcrypt": "^5.1.1",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "passport-github2": "^0.1.12",
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "cors": "^2.8.5",
+    "helmet": "^8.0.0",
+    "express-validator": "^7.2.0",
+    "express-rate-limit": "^7.4.1",
+    "morgan": "^1.10.0",
+    "winston": "^3.17.0"
+  }
+}
