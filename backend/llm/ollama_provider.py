@@ -14,7 +14,6 @@ class OllamaProvider:
         api_key: str | None = None,
     ) -> str:
         system = "\n\n".join(filter(None, [static_system, dynamic_context]))
-
         async with httpx.AsyncClient(timeout=180.0) as client:
             response = await client.post(
                 f"{settings.ollama_base_url}/api/generate",

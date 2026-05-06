@@ -25,7 +25,7 @@ class AnthropicProvider:
     ) -> str:
         client = self._get_client(api_key)
 
-        # Blocks 1-3 (static_system) are cached; Blocks 4-5 (dynamic_context) are not
+        # Blocks 1-3 (static_system) cached; Blocks 4-5 (dynamic_context) not cached
         system_blocks: list[dict] = []
         if static_system:
             system_blocks.append({

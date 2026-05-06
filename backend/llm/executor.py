@@ -21,12 +21,20 @@ class LLMExecutor:
         dynamic_context: str = "",
         api_key: str | None = None,
     ) -> str:
-        return await self._provider.complete(
-            user_message=user_message,
-            static_system=static_system,
-            dynamic_context=dynamic_context,
-            api_key=api_key,
-        )
+        for attempt in range(1, 3):
+            try:
+                return await self._provider.complete(
+                    user_message=user_message,
+                    static_system=static_system,
+                    dynamic_context=dynamic_context,
+                    api_key=api_key,
+                )
+            except Exception as exc:
+                if attempt == 1:
+                    logger.warning("LLM call attempt 1 failed: %s, retrying...", exc)
+                else:
+                    logger.error("LLM call attempt 2 failed: %s, raising", exc)
+                    raise
 
 
 llm_executor = LLMExecutor()

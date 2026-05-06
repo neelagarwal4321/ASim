@@ -12,8 +12,8 @@ from pydantic import BaseModel, Field
 
 MoralAlignment = Literal["authoritarian", "libertarian", "utilitarian", "deontological", "nihilist"]
 AppealType = Literal["emotional", "rational", "social", "authority"]
-ActionType = Literal["debate", "persuade", "broadcast", "challenge", "agree", "withdraw", "rally"]
-EmotionType = Literal["neutral", "optimistic", "angry", "fearful", "determined", "hopeful", "cynical", "passionate"]
+ActionType = str   # not a Literal — action_selector uses its own action set
+EmotionType = str  # not a Literal — LLM returns arbitrary emotion strings
 
 
 class TraitVector(BaseModel):
