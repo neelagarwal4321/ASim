@@ -54,6 +54,37 @@ backend/  (Python + FastAPI)          ← "agent side" — simulation engine onl
 
 ---
 
+## Session Workflow Rules
+
+### Subagent Strategy
+- Use subagents for every multi-file task — keeps main context clean
+- Haiku for minimal mechanical tasks (single file, clear spec)
+- Sonnet for planning, orchestration, multi-file coordination
+- No Opus unless user explicitly requests it
+- One task per subagent — focused execution, no shared state
+
+### Verification Before Claiming Done
+- Never mark a task complete without running the verification command
+- Run `pytest tests/ -q` after every Python change — 43 must always pass
+- Run `node -e "require('./server/index')"` after every Node change
+- Check `git log --oneline -3` to confirm commit landed
+
+### Plan First
+- Enter plan mode for any task with 3+ steps or architectural decisions
+- If something goes sideways, stop and re-plan — don't patch over confusion
+- Write specs before touching code on new features
+
+### Bug Fixing
+- When given a bug report: diagnose root cause first, then fix
+- Point at exact file:line before proposing fix
+- Never bypass tests or safety checks to make a problem "go away"
+
+### CLAUDE.md Updates
+- Update "Current Build State" table after every phase completion
+- Add newly discovered rules here, not in lessons.md or other files
+
+---
+
 ## Current Build State
 
 | Layer | Status | Notes |
@@ -61,9 +92,13 @@ backend/  (Python + FastAPI)          ← "agent side" — simulation engine onl
 | Frontend — public pages, auth, legal | ✅ Complete | Landing, About, HowItWorks, Help, Changelog, Login, Signup, ForgotPassword, ResetPassword, Terms, Privacy |
 | Frontend — app shell | ✅ Complete | Sidebar, TopBar, Navbar, Footer, RouteGuard |
 | Frontend — Dashboard, NewSimulation | ✅ Complete | |
-| Frontend — LiveSimulation, Report | ✅ Complete | Uses mock data; will wire to real WebSocket in Phase 2 |
-| Frontend — SimulationHistory, Settings, Profile, ApiKeySettings | 🔲 Stubs | Pages exist but are placeholder shells |
-| Backend — ALL modules | 🔲 Not started | Phase 1 build is next |
+| Frontend — LiveSimulation, Report | ✅ Complete | Uses mock data; Phase 3 wires to real API |
+| Frontend — SimulationHistory, Settings, Profile, ApiKeySettings | 🔲 Stubs | Pages exist but are placeholder shells — Phase 3 |
+| Backend Phase 1 — CLI simulation engine | ✅ Complete | 43 tests passing; `python backend/cli.py --scenario "..." --agents 50 --rounds 5` works |
+| Backend Phase 2A — FastAPI DB layer | ✅ Complete | SQLAlchemy ORM (9 tables), MongoDB Motor client, Alembic migrations, Celery stubs, Redis publisher, AES-256 API key store, internal REST API |
+| Backend Phase 2B — Node/Express API layer | ✅ Complete | JWT + OAuth (Google/GitHub), all REST routes, WebSocket (`/ws/simulate/:id`), Redis pub/sub fan-out |
+| Backend Phase 2C — Integration verified | 🔲 Pending | Need real Postgres + Redis running; apply `alembic upgrade head` then smoke test |
+| Phase 3 — Frontend wiring | 🔲 Not started | Replace all mock data with real API calls (24 tasks) |
 
 ---
 
