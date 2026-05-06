@@ -12,10 +12,12 @@ class Settings(BaseSettings):
     database_url: str = ""
     mongodb_url: str = ""
     mongodb_db: str = "asim"
-    redis_url: str = ""
+    redis_url: str = "redis://localhost:6379"
     app_env: str = "development"
     fastapi_port: int = 8000
     secret_key: str = ""
+    celery_broker_url: str = "redis://localhost:6379/0"
+    celery_result_backend: str = "redis://localhost:6379/1"
 
 
 settings = Settings()
