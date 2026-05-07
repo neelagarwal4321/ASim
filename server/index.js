@@ -47,16 +47,18 @@ const server = http.createServer(app);
 // WebSocket
 setupWebSocket(server);
 
-server.listen(PORT, () => {
-  logger.info(`ASim Node server listening on port ${PORT}`);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  server.close(() => {
-    logger.info('Server closed');
-    process.exit(0);
+if (require.main === module) {
+  server.listen(PORT, () => {
+    logger.info(`ASim Node server listening on port ${PORT}`);
   });
-});
 
-module.exports = { app };
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    server.close(() => {
+      logger.info('Server closed');
+      process.exit(0);
+    });
+  });
+}
+
+module.exports = app;

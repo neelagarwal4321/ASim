@@ -1,0 +1,12 @@
+process.env.NODE_ENV = 'test';
+process.env.SECRET_KEY = 'test-secret-key-exactly-32-chars!';
+process.env.JWT_EXPIRY = '7d';
+process.env.DATABASE_URL_NODE = 'postgresql://test:test@localhost:5432/asim_test';
+process.env.REDIS_URL = 'redis://localhost:6379';
+process.env.FASTAPI_INTERNAL_URL = 'http://localhost:8000';
+process.env.NODE_PORT = '3001';
+process.env.GOOGLE_CLIENT_ID = 'test-google-id';
+process.env.GOOGLE_CLIENT_SECRET = 'test-google-secret';
+process.env.GITHUB_CLIENT_ID = 'test-github-id';
+process.env.GITHUB_CLIENT_SECRET = 'test-github-secret';
+process.env.OAUTH_CALLBACK_BASE = 'http://localhost:3001';
