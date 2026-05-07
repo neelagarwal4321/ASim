@@ -9,6 +9,7 @@ from llm.executor import llm_executor
 from llm.response_parser import parse_response
 from output.aggregator import compute_verdict
 from output.narrative_synthesizer import generate_narrative
+from services.redis_publisher import publish_round
 from simulation.action_selector import select_action
 from simulation.persuasion_engine import resolve_persuasion
 from simulation.prompt_builder import build_prompt
@@ -39,6 +40,7 @@ async def run_simulation(
     rounds: int = 5,
     seed: int | None = None,
     api_key: str | None = None,
+    simulation_id: str | None = None,
 ) -> SimulationResult:
     rng = random.Random(seed)
     agents = generate_agents(count=agent_count, seed=seed)
@@ -77,6 +79,29 @@ async def run_simulation(
         round_logs.append(RoundResult(round_num=round_num, actions=actions, stance_distribution=dist))
         logger.info("  Support %.0f%%  Oppose %.0f%%  Undecided %.0f%%", support * 100, oppose * 100, undecided * 100)
 
+        if simulation_id:
+            try:
+                publish_round(simulation_id, {
+                    "type": "round",
+                    "round_num": round_num,
+                    "total_rounds": rounds,
+                    "distribution": dist,
+                    "actions": [
+                        {
+                            "agent_id": a.agent_id,
+                            "name": a.name,
+                            "archetype": a.archetype,
+                            "action": a.action,
+                            "free_text": a.free_text,
+                            "stance": float(f"{a.stance:.3f}"),
+                            "emotion": a.emotion,
+                        }
+                        for a in actions
+                    ],
+                })
+            except Exception as exc:
+                logger.warning("Redis publish round %d failed: %s", round_num, exc)
+
     final_states = state_mgr.get_all_states()
     verdict_data = compute_verdict(final_states)
     narrative = await generate_narrative(
@@ -93,13 +118,27 @@ async def run_simulation(
         if s.agent_id in agent_map
     ]
 
-    return SimulationResult(
+    result = SimulationResult(
         verdict=verdict_data["verdict"],
         confidence=verdict_data["confidence"],
         distribution=verdict_data["distribution"],
         top_agents=top_agents,
         narrative=narrative,
     )
+
+    if simulation_id:
+        try:
+            publish_round(simulation_id, {
+                "type": "complete",
+                "verdict": verdict_data["verdict"],
+                "confidence": verdict_data["confidence"],
+                "distribution": verdict_data["distribution"],
+                "narrative": narrative,
+            })
+        except Exception as exc:
+            logger.warning("Redis publish complete failed: %s", exc)
+
+    return result
 
 
 async def _run_round(
