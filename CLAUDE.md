@@ -65,7 +65,7 @@ backend/  (Python + FastAPI)          ← "agent side" — simulation engine onl
 
 ### Verification Before Claiming Done
 - Never mark a task complete without running the verification command
-- Run `pytest tests/ -q` after every Python change — 43 must always pass
+- Run `pytest tests/ -q` after every Python change — 46 must always pass
 - Run `node -e "require('./server/index')"` after every Node change
 - Check `git log --oneline -3` to confirm commit landed
 
