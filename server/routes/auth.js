@@ -17,7 +17,7 @@ const DEMO_USER = { id: 'demo', email: 'demo@asim.ai', name: 'Demo User' };
 
 async function issueStoredSession(user) {
   const accessToken = signAccess({ userId: user.id, email: user.email });
-  const refreshToken = signRefresh({ userId: user.id });
+  const refreshToken = signRefresh({ userId: user.id, jti: crypto.randomBytes(16).toString('hex') });
   const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   await query('INSERT INTO refresh_tokens(user_id, token_hash, expires_at, revoked) VALUES($1,$2,$3,$4)', [user.id, tokenHash, expiresAt, false]);

@@ -11,6 +11,7 @@ class OllamaProvider:
         user_message: str,
         static_system: str = "",
         dynamic_context: str = "",
+        
         api_key: str | None = None,
     ) -> str:
         system = "\n\n".join(filter(None, [static_system, dynamic_context]))
