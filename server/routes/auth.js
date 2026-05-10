@@ -8,6 +8,7 @@ const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
 const { query } = require('../db/client');
 const { signAccess, signRefresh, verify } = require('../services/jwtService');
+const { getClient } = require('../services/redisService');
 
 const router = express.Router();
 
@@ -30,17 +31,15 @@ function issueDemoSession() {
   };
 }
 
-function getFrontendCallbackBase() {
-  return process.env.FRONTEND_URL || process.env.OAUTH_FRONTEND_CALLBACK_BASE || 'http://localhost:5173';
-}
-
-function buildOAuthSuccessRedirect(user, accessToken, refreshToken) {
-  const url = new URL('/auth/callback', getFrontendCallbackBase());
-  url.searchParams.set('accessToken', accessToken);
-  url.searchParams.set('refreshToken', refreshToken);
-  url.searchParams.set('email', user.email);
-  if (user.display_name || user.name) url.searchParams.set('name', user.display_name || user.name);
-  return url.toString();
+async function issueOAuthCode(user) {
+  const code = crypto.randomBytes(32).toString('hex');
+  await getClient().set(
+    `oauth:code:${code}`,
+    JSON.stringify({ userId: user.id, email: user.email }),
+    'EX', 60
+  );
+  const base = process.env.FRONTEND_URL || 'http://localhost:5173';
+  return `${base}/auth/callback?code=${code}`;
 }
 
 router.post('/demo', (req, res) => {
@@ -123,36 +122,46 @@ router.post('/logout', requireAuth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.get('/me', requireAuth, async (req, res, next) => {
-  try {
-    const { rows } = await query('SELECT id, email, display_name, avatar_url, created_at FROM users WHERE id=$1', [req.user.userId]);
-    if (!rows.length) return res.status(404).json({ error: 'User not found' });
-    res.json(rows[0]);
-  } catch (err) { next(err); }
-});
+// /me lives on /api/v1/users/me — see routes/users.js (single source of truth).
 
 // OAuth routes
 router.get('/oauth/google', passport.authenticate('google', { scope: ['profile', 'email'], session: false }));
 router.get('/oauth/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/login?error=oauth_failed' }),
+  passport.authenticate('google', { session: false, failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?error=oauth_failed` }),
   async (req, res, next) => {
     try {
-      const { accessToken, refreshToken } = await issueStoredSession(req.user);
-      res.redirect(buildOAuthSuccessRedirect(req.user, accessToken, refreshToken));
+      const redirectUrl = await issueOAuthCode(req.user);
+      res.redirect(redirectUrl);
     } catch (err) { next(err); }
   }
 );
 
 router.get('/oauth/github', passport.authenticate('github', { scope: ['user:email'], session: false }));
 router.get('/oauth/github/callback',
-  passport.authenticate('github', { session: false, failureRedirect: '/login?error=oauth_failed' }),
+  passport.authenticate('github', { session: false, failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?error=oauth_failed` }),
   async (req, res, next) => {
     try {
-      const { accessToken, refreshToken } = await issueStoredSession(req.user);
-      res.redirect(buildOAuthSuccessRedirect(req.user, accessToken, refreshToken));
+      const redirectUrl = await issueOAuthCode(req.user);
+      res.redirect(redirectUrl);
     } catch (err) { next(err); }
   }
 );
+
+router.post('/exchange', async (req, res, next) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ error: 'code required' });
+    const redis = getClient();
+    const raw = await redis.get(`oauth:code:${code}`);
+    if (!raw) return res.status(400).json({ error: 'Invalid or expired code' });
+    await redis.del(`oauth:code:${code}`);
+    const { userId, email } = JSON.parse(raw);
+    const userRows = await query('SELECT id, email, display_name FROM users WHERE id=$1', [userId]);
+    const user = userRows.rows[0];
+    const { accessToken, refreshToken } = await issueStoredSession(user);
+    res.json({ accessToken, refreshToken, user: { id: user.id, email: user.email, display_name: user.display_name } });
+  } catch (err) { next(err); }
+});
 
 router.post('/forgot-password', authLimiter, async (req, res) => {
   // Stub — email service not yet integrated
