@@ -22,9 +22,10 @@ def resolve_persuasion(
     matched = _APPEAL_EMOTION_MATCH.get(actor.appeal_type, frozenset())
     emotional_resonance = 1.0 if target_state.emotion in matched else 0.0
 
+    argument_quality = max(0.0, min(1.0, getattr(actor_action, "argument_quality", 0.5)))
     persuasion_score = (
         trust_score                      * 0.30
-        + actor_action.confidence        * 0.25
+        + argument_quality               * 0.25
         + emotional_resonance            * 0.20
         + social_proof                   * 0.15
         + min(0.30, repetition_bonus)    * 0.10

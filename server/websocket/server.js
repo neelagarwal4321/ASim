@@ -4,6 +4,8 @@ const { getSubscriber } = require('../services/redisService');
 const logger = require('../services/logger');
 
 const subs = new Map(); // simulationId -> Set<ws>
+const subscribedSims = new Set();
+let messageListenerAttached = false;
 
 function setupWebSocket(server) {
   const wss = new WebSocketServer({ noServer: true });
@@ -28,38 +30,38 @@ function setupWebSocket(server) {
         } catch {}
       });
 
-      ws.on('close', () => {
-        const set = subs.get(simulationId);
-        if (set) { set.delete(ws); if (!set.size) subs.delete(simulationId); }
-      });
-
       const heartbeat = setInterval(() => {
         if (ws.readyState === ws.OPEN) ws.ping();
       }, 30000);
-      ws.on('close', () => clearInterval(heartbeat));
 
-      // Subscribe Redis channel for this simulation
+      ws.on('close', () => {
+        const set = subs.get(simulationId);
+        if (set) { set.delete(ws); if (!set.size) subs.delete(simulationId); }
+        clearInterval(heartbeat);
+      });
+
       subscribeIfNeeded(simulationId);
     });
   });
 }
 
-const subscribedSims = new Set();
-
 function subscribeIfNeeded(simulationId) {
+  const sub = getSubscriber();
+  if (!messageListenerAttached) {
+    messageListenerAttached = true;
+    sub.on('message', (channel, message) => {
+      const id = channel.replace('sim:', '').replace(':rounds', '');
+      const clients = subs.get(id);
+      if (!clients) return;
+      clients.forEach((ws) => {
+        if (ws.readyState === ws.OPEN) ws.send(message);
+      });
+    });
+  }
   if (subscribedSims.has(simulationId)) return;
   subscribedSims.add(simulationId);
-  const sub = getSubscriber();
   sub.subscribe(`sim:${simulationId}:rounds`, (err) => {
-    if (err) logger.error('Redis subscribe error: %s', err.message);
-  });
-  sub.on('message', (channel, message) => {
-    const id = channel.replace('sim:', '').replace(':rounds', '');
-    const clients = subs.get(id);
-    if (!clients) return;
-    clients.forEach((ws) => {
-      if (ws.readyState === ws.OPEN) ws.send(message);
-    });
+    if (err) logger.error(`Redis subscribe error: ${err.message}`);
   });
 }
 

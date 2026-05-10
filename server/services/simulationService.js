@@ -22,8 +22,9 @@ async function injectEvent(simulationId, eventPayload, apiKey) {
   return data;
 }
 
-async function controlSimulation(simulationId, action) {
-  const { data } = await client.post(`/internal/simulate/${simulationId}/control`, { action });
+async function controlSimulation(simulationId, action, apiKey) {
+  const headers = apiKey ? { 'X-API-Key': apiKey } : {};
+  const { data } = await client.post(`/internal/simulate/${simulationId}/control`, { action }, { headers });
   return data;
 }
 

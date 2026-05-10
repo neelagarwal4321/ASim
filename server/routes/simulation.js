@@ -52,6 +52,9 @@ router.get('/', requireAuth, async (req, res, next) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    if (req.user.demo) {
+      return res.json({ simulations: [], page, limit });
+    }
     const offset = (page - 1) * limit;
     const { rows } = await query(
       `SELECT id, scenario, agent_count, rounds, status, created_at
@@ -91,12 +94,12 @@ router.delete('/:id', requireAuth, async (req, res, next) => {
 });
 
 // POST /api/v1/simulate/:id/control
-router.post('/:id/control', requireAuth,
+router.post('/:id/control', requireAuth, extractApiKey,
   body('action').isIn(['pause', 'resume', 'cancel']),
   validate,
   async (req, res, next) => {
     try {
-      await controlSimulation(req.params.id, req.body.action);
+      await controlSimulation(req.params.id, req.body.action, req.apiKey);
       if (req.body.action === 'cancel') {
         await query(`UPDATE simulation_configs SET status='cancelled' WHERE id=$1`, [req.params.id]);
       }

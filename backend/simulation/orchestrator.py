@@ -209,11 +209,18 @@ async def _run_round(
         state.interaction_count += 1
         state_mgr.update_state(state)
 
+        try:
+            arg_q = float(json_data.get("argument_quality", 0.5))
+        except (TypeError, ValueError):
+            arg_q = 0.5
+        arg_q = max(0.0, min(1.0, arg_q))
+
         actions.append(RoundAction(
             agent_id=agent.id, name=agent.name, archetype=agent.archetype,
             action=action_type, target_id=target_id,
             free_text=free_text or f"[{agent.name} performs {action_type}]",
             stance=state.stance, emotion=state.emotion, confidence=state.confidence,
+            argument_quality=arg_q,
         ))
 
     _apply_persuasion(actions, agent_map, state_mgr)

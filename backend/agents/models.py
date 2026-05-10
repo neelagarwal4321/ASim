@@ -76,6 +76,7 @@ class RoundAction(BaseModel):
     stance: float
     emotion: EmotionType
     confidence: float
+    argument_quality: float = 0.5
 
 
 class RelationshipEdge(BaseModel):

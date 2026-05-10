@@ -21,7 +21,11 @@ const app = express();
 
 // Security + logging
 app.use(helmet());
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173', credentials: true }));
+const corsOrigin = process.env.CORS_ORIGIN ||
+  (process.env.NODE_ENV !== 'production'
+    ? (origin, cb) => cb(null, /^http:\/\/localhost(:\d+)?$/.test(origin || '') ? origin : false)
+    : 'http://localhost:5173');
+app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(morgan('dev', { stream: { write: (msg) => logger.info(msg.trim()) } }));
 app.use(express.json({ limit: '1mb' }));
 
