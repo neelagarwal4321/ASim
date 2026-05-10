@@ -2,6 +2,7 @@ const Redis = require('ioredis');
 
 let _pub = null;
 let _sub = null;
+let _client = null;
 
 function getPublisher() {
   if (!_pub) _pub = new Redis(process.env.REDIS_URL);
@@ -13,4 +14,9 @@ function getSubscriber() {
   return _sub;
 }
 
-module.exports = { getPublisher, getSubscriber };
+function getClient() {
+  if (!_client) _client = new Redis(process.env.REDIS_URL);
+  return _client;
+}
+
+module.exports = { getPublisher, getSubscriber, getClient };
