@@ -20,6 +20,8 @@ def _make_mock_result():
         top_agents=[{"agent": agent, "state": state}],
         narrative="Debate concluded.",
         counterfactuals=[],
+        hallucination={"level": "green", "total_warnings": 0, "total_actions": 0,
+                       "warning_rate": 0.0, "per_round": [], "details": []},
         report={},
     )
 

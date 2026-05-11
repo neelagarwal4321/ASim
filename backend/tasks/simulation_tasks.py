@@ -17,6 +17,7 @@ async def _persist_result(simulation_id: str, result: dict) -> None:
         + dist.get("oppose", 0) * 0.2
     )
     async with AsyncSessionLocal() as session:
+        hallucination_level = result.get("hallucination", {}).get("level", "green")
         session.add(SimResultModel(
             simulation_id=simulation_id,
             verdict=result["verdict"],
@@ -26,7 +27,7 @@ async def _persist_result(simulation_id: str, result: dict) -> None:
             narrative=result["narrative"],
             counterfactuals=result.get("counterfactuals", []),
             report=result.get("report", {}),
-            hallucination_level="none",
+            hallucination_level=hallucination_level,
         ))
         await session.execute(
             update(SimulationConfig)
@@ -85,6 +86,7 @@ def run_full_simulation(
             "distribution": sim_result.distribution,
             "narrative": sim_result.narrative,
             "counterfactuals": sim_result.counterfactuals,
+            "hallucination": sim_result.hallucination,
             "report": sim_result.report,
             "status": "complete",
         }

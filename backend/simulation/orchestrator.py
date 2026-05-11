@@ -9,6 +9,7 @@ from llm.executor import llm_executor
 from llm.response_parser import parse_response
 from output.aggregator import compute_verdict
 from output.counterfactual_prober import run_probes
+from output.hallucination_checker import check_hallucinations
 from output.narrative_synthesizer import generate_narrative
 from output.report_assembler import assemble as assemble_report
 from services.redis_publisher import publish_round
@@ -35,6 +36,7 @@ class SimulationResult:
     top_agents: list[dict]
     narrative: str
     counterfactuals: list[dict]
+    hallucination: dict
     report: dict
 
 
@@ -123,6 +125,7 @@ async def run_simulation(
     ]
 
     counterfactuals = run_probes(final_states, agents, verdict_data)
+    hallucination = check_hallucinations(round_logs, {a.id for a in agents})
     report = assemble_report(
         scenario=scenario,
         verdict=verdict_data,
@@ -131,6 +134,7 @@ async def run_simulation(
         top_agents=top_agents,
         round_count=len(round_logs),
         agent_count=len(final_states),
+        hallucination=hallucination,
     )
 
     result = SimulationResult(
@@ -140,6 +144,7 @@ async def run_simulation(
         top_agents=top_agents,
         narrative=narrative,
         counterfactuals=counterfactuals,
+        hallucination=hallucination,
         report=report,
     )
 

@@ -34,6 +34,7 @@ def assemble(
     top_agents: list[dict],
     round_count: int,
     agent_count: int,
+    hallucination: dict | None = None,
 ) -> dict:
     return {
         "scenario": scenario,
@@ -46,4 +47,7 @@ def assemble(
         "top_agents": [_top_agent_view(t) for t in top_agents],
         "round_count": round_count,
         "agent_count": agent_count,
+        "hallucination": hallucination or {"level": "green", "total_warnings": 0,
+                                           "total_actions": 0, "warning_rate": 0.0,
+                                           "per_round": [], "details": []},
     }
