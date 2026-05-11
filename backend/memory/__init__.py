@@ -1,2 +1,4 @@
-# Phase 2 — memory compression + hallucination checker. Not yet implemented.
-# See CLAUDE.md "Current Build State" table.
+"""Memory module: per-agent memory compression. See compressor.py."""
+from memory.compressor import update_memory
+
+__all__ = ["update_memory"]

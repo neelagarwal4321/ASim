@@ -7,6 +7,7 @@ from agents.models import AgentProfile, AgentState, RoundAction
 from agents.generator import generate_agents
 from llm.executor import llm_executor
 from llm.response_parser import parse_response
+from memory.compressor import update_memory
 from output.aggregator import compute_verdict
 from output.counterfactual_prober import run_probes
 from output.hallucination_checker import check_hallucinations
@@ -16,6 +17,7 @@ from services.redis_publisher import publish_round
 from simulation.action_selector import select_action
 from simulation.persuasion_engine import resolve_persuasion
 from simulation.prompt_builder import build_prompt
+from simulation.round_log_builder import build_round_log
 from simulation.state_manager import StateManager
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,10 @@ async def run_simulation(
         state_mgr.update_state(state)
 
     round_logs: list[RoundResult] = []
+    cumulative_interactions = 0
+    cumulative_events = 0
+    prev_cohesion: float | None = None
+    prev_entropy: float | None = None
 
     for round_num in range(1, rounds + 1):
         logger.info("Round %d/%d", round_num, rounds)
@@ -73,6 +79,7 @@ async def run_simulation(
             total_rounds=rounds,
             rng=rng,
             api_key=api_key,
+            prior_distribution=round_logs[-1].stance_distribution if round_logs else None,
         )
 
         all_states = state_mgr.get_all_states()
@@ -83,28 +90,28 @@ async def run_simulation(
 
         dist = {"support": round(support, 3), "oppose": round(oppose, 3), "undecided": round(undecided, 3)}
         round_logs.append(RoundResult(round_num=round_num, actions=actions, stance_distribution=dist))
+        cumulative_interactions += len(actions)
         logger.info("  Support %.0f%%  Oppose %.0f%%  Undecided %.0f%%", support * 100, oppose * 100, undecided * 100)
 
         if simulation_id:
             try:
-                publish_round(simulation_id, {
-                    "type": "round",
-                    "round_num": round_num,
-                    "total_rounds": rounds,
-                    "distribution": dist,
-                    "actions": [
-                        {
-                            "agent_id": a.agent_id,
-                            "name": a.name,
-                            "archetype": a.archetype,
-                            "action": a.action,
-                            "free_text": a.free_text,
-                            "stance": float(f"{a.stance:.3f}"),
-                            "emotion": a.emotion,
-                        }
-                        for a in actions
-                    ],
-                })
+                envelope = build_round_log(
+                    simulation_id=simulation_id,
+                    round_num=round_num,
+                    total_rounds=rounds,
+                    actions=actions,
+                    states=all_states,
+                    agents=agents,
+                    archetype_colors={},
+                    distribution=dist,
+                    cumulative_interactions=cumulative_interactions,
+                    cumulative_events=cumulative_events,
+                    prev_cohesion=prev_cohesion,
+                    prev_entropy=prev_entropy,
+                )
+                publish_round(simulation_id, {"type": envelope["type"], "payload": envelope["payload"]})
+                prev_cohesion = envelope["cohesion"]
+                prev_entropy = envelope["entropy"]
             except Exception as exc:
                 logger.warning("Redis publish round %d failed: %s", round_num, exc)
 
@@ -152,6 +159,12 @@ async def run_simulation(
         try:
             publish_round(simulation_id, {
                 "type": "complete",
+                "payload": {
+                    "simulation_id": simulation_id,
+                    "total_rounds": len(round_logs),
+                    "agent_count": len(final_states),
+                    "community_count": 0,
+                },
                 "verdict": verdict_data["verdict"],
                 "confidence": verdict_data["confidence"],
                 "distribution": verdict_data["distribution"],
@@ -172,6 +185,7 @@ async def _run_round(
     total_rounds: int,
     rng: random.Random,
     api_key: str | None,
+    prior_distribution: dict | None = None,
 ) -> list[RoundAction]:
     all_ids = [a.id for a in agents]
     actions: list[RoundAction] = []
@@ -237,13 +251,17 @@ async def _run_round(
             arg_q = 0.5
         arg_q = max(0.0, min(1.0, arg_q))
 
-        actions.append(RoundAction(
+        round_action = RoundAction(
             agent_id=agent.id, name=agent.name, archetype=agent.archetype,
             action=action_type, target_id=target_id,
             free_text=free_text or f"[{agent.name} performs {action_type}]",
             stance=state.stance, emotion=state.emotion, confidence=state.confidence,
             argument_quality=arg_q,
-        ))
+        )
+        actions.append(round_action)
+
+        state.memory_text = update_memory(state, round_action, prior_distribution or {}, round_num)
+        state_mgr.update_state(state)
 
     _apply_persuasion(actions, agent_map, state_mgr)
     return actions

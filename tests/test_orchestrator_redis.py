@@ -18,7 +18,7 @@ async def test_publish_round_called_per_round_when_simulation_id_given():
     # 2 round events + 1 complete event = 3 calls
     assert mock_pub.call_count == 3
     types = [c.args[1]["type"] for c in mock_pub.call_args_list]
-    assert types.count("round") == 2
+    assert types.count("round_log") == 2
     assert types.count("complete") == 1
 
 
@@ -46,13 +46,19 @@ async def test_round_payload_has_required_fields():
             rounds=1,
             simulation_id="test-sim-002",
         )
-    round_call = next(c for c in mock_pub.call_args_list if c.args[1]["type"] == "round")
-    payload = round_call.args[1]
-    assert "round_num" in payload
+    round_call = next(c for c in mock_pub.call_args_list if c.args[1]["type"] == "round_log")
+    payload = round_call.args[1]["payload"]
+    assert payload["simulation_id"] == "test-sim-002"
+    assert "round" in payload
     assert "total_rounds" in payload
-    assert "distribution" in payload
-    assert "actions" in payload
+    assert "agents" in payload
+    assert "communities" in payload
+    assert "edges" in payload
+    assert "events" in payload
+    assert "metrics" in payload
+    assert "outcomes" in payload
     assert all(
-        {"agent_id", "name", "action", "stance", "emotion"} <= set(a.keys())
-        for a in payload["actions"]
+        {"id", "name", "archetype", "stance", "emotion", "action", "message", "influence", "community_id"} <= set(a.keys())
+        for a in payload["agents"]
     )
+    assert {"cohesion", "entropy", "interactions_this_round", "total_interactions"} <= set(payload["metrics"].keys())
