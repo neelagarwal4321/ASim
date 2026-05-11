@@ -85,12 +85,12 @@ Routes are fixed in `src/App.tsx`. Do not invent new ones without spec update.
 
 | Layer | Status |
 |---|---|
-| Phase 1 — Python CLI engine | ✅ 88 tests pass |
+| Phase 1 — Python CLI engine | ✅ pytest green |
 | Phase 2A — FastAPI DB layer | ✅ Pydantic+ORM+Mongo+Celery+Redis+API key store |
 | Phase 2B — Node/Express layer | ✅ JWT/OAuth/WS/pubsub, 18 tests pass |
-| Phase 2C — Live integration smoke | 🔲 Needs real Postgres+Redis |
-| Phase 3 — Frontend wiring | ✅ public + auth + dashboard + new sim. 17 tests pass, tsc clean |
-| Phase 4 — Live sim, report, full app pages | 🔲 Pending |
+| Phase 2C — Live integration smoke | ✅ verified end-to-end (Node → FastAPI → Celery → Ollama → Redis pubsub → Postgres) |
+| Phase 3 — Frontend wiring | ✅ 17 tests pass, tsc clean |
+| Phase 4 — Live sim, report, hallucination, memory, communities, edges | ✅ 126 Python tests pass |
 
 ## Workflow
 
