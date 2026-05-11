@@ -99,3 +99,6 @@ class StateManager:
         key = (agent_a_id, agent_b_id)
         current = self._trust.get(key, 0.5)
         self._trust[key] = max(0.0, min(1.0, current + delta))
+
+    def get_all_trust(self) -> dict[tuple[str, str], float]:
+        return dict(self._trust)

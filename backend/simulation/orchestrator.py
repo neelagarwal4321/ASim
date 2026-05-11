@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from agents.models import AgentProfile, AgentState, RoundAction
 from agents.generator import generate_agents
+from graph.community_detector import detect_communities
 from llm.executor import llm_executor
 from llm.response_parser import parse_response
 from memory.compressor import update_memory
@@ -108,6 +109,7 @@ async def run_simulation(
                     cumulative_events=cumulative_events,
                     prev_cohesion=prev_cohesion,
                     prev_entropy=prev_entropy,
+                    trust=state_mgr.get_all_trust(),
                 )
                 publish_round(simulation_id, {"type": envelope["type"], "payload": envelope["payload"]})
                 prev_cohesion = envelope["cohesion"]
@@ -155,6 +157,8 @@ async def run_simulation(
         report=report,
     )
 
+    final_communities = detect_communities(agents, final_states, state_mgr.get_all_trust())
+
     if simulation_id:
         try:
             publish_round(simulation_id, {
@@ -163,7 +167,7 @@ async def run_simulation(
                     "simulation_id": simulation_id,
                     "total_rounds": len(round_logs),
                     "agent_count": len(final_states),
-                    "community_count": 0,
+                    "community_count": len(final_communities),
                 },
                 "verdict": verdict_data["verdict"],
                 "confidence": verdict_data["confidence"],

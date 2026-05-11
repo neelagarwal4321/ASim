@@ -12,6 +12,8 @@ from __future__ import annotations
 import math
 
 from agents.models import AgentProfile, AgentState, RoundAction
+from graph.community_detector import detect_communities
+from graph.edge_builder import build_edges
 
 # Outcome palette mirrors the frontend RoundLogOutcome colors.
 _OUTCOME_PALETTE = {
@@ -55,10 +57,19 @@ def build_round_log(
     cumulative_events: int,
     prev_cohesion: float | None,
     prev_entropy: float | None,
+    trust: dict[tuple[str, str], float] | None = None,
     avg_response_ms: float = 0.0,
 ) -> dict:
     profile_by_id = {a.id: a for a in agents}
     state_by_id = {s.agent_id: s for s in states}
+    trust = trust or {}
+
+    communities = detect_communities(agents, states, trust)
+    community_of: dict[str, str] = {}
+    for community in communities:
+        for member_id in community["member_ids"]:
+            community_of[member_id] = community["id"]
+    edges = build_edges(agents, trust)
 
     agents_payload = []
     for action in actions:
@@ -75,7 +86,7 @@ def build_round_log(
             "action": action.action,
             "message": action.free_text,
             "influence": round(state.influence_score, 3),
-            "community_id": "",  # phase 2 community detection not yet wired
+            "community_id": community_of.get(action.agent_id, ""),
         })
 
     stances = [s.stance for s in states]
@@ -116,8 +127,8 @@ def build_round_log(
             "round": round_num,
             "total_rounds": total_rounds,
             "agents": agents_payload,
-            "communities": [],
-            "edges": [],
+            "communities": communities,
+            "edges": edges,
             "events": events,
             "metrics": metrics,
             "outcomes": outcomes,
