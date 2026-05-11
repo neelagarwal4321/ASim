@@ -16,6 +16,7 @@ const simulationRouter = require('./routes/simulation');
 const agentsRouter = require('./routes/agents');
 const eventsRouter = require('./routes/events');
 const usersRouter = require('./routes/users');
+const scenariosRouter = require('./routes/scenarios');
 
 const app = express();
 
@@ -38,6 +39,7 @@ app.use('/api/v1/simulate', simulationRouter);
 app.use('/api/v1/simulate/:id/agents', agentsRouter);
 app.use('/api/v1/simulate/:id', eventsRouter);
 app.use('/api/v1/users', usersRouter);
+app.use('/api/v1/scenarios', scenariosRouter);
 
 // Health
 app.get('/health', (req, res) => res.json({ status: 'ok', service: 'asim-node' }));
