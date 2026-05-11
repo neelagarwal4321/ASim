@@ -24,6 +24,8 @@ async def _persist_result(simulation_id: str, result: dict) -> None:
             distribution=result["distribution"],
             avg_stance=round(avg_stance, 3),
             narrative=result["narrative"],
+            counterfactuals=result.get("counterfactuals", []),
+            report=result.get("report", {}),
             hallucination_level="none",
         ))
         await session.execute(
@@ -82,6 +84,8 @@ def run_full_simulation(
             "confidence": sim_result.confidence,
             "distribution": sim_result.distribution,
             "narrative": sim_result.narrative,
+            "counterfactuals": sim_result.counterfactuals,
+            "report": sim_result.report,
             "status": "complete",
         }
         try:

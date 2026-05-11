@@ -71,7 +71,8 @@ router.get('/', requireAuth, async (req, res, next) => {
 router.get('/:id', requireAuth, async (req, res, next) => {
   try {
     const { rows } = await query(
-      `SELECT sc.*, sr.verdict, sr.confidence, sr.distribution, sr.narrative
+      `SELECT sc.*, sr.verdict, sr.confidence, sr.distribution, sr.narrative,
+              sr.counterfactuals, sr.report, sr.avg_stance
        FROM simulation_configs sc
        LEFT JOIN simulation_results sr ON sr.simulation_id = sc.id
        WHERE sc.id=$1 AND sc.user_id=$2 AND sc.deleted_at IS NULL`,

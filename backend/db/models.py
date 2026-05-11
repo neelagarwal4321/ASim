@@ -113,6 +113,8 @@ class SimulationResult(Base):
     distribution: Mapped[dict] = mapped_column(JSON, nullable=False)
     avg_stance: Mapped[float] = mapped_column(Float, nullable=False)
     narrative: Mapped[str] = mapped_column(Text, nullable=False)
+    counterfactuals: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    report: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     hallucination_level: Mapped[str] = mapped_column(String(20), default="none")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 

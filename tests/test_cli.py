@@ -19,6 +19,8 @@ def _make_mock_result():
         distribution={"support": 0.68, "oppose": 0.22, "undecided": 0.10},
         top_agents=[{"agent": agent, "state": state}],
         narrative="Debate concluded.",
+        counterfactuals=[],
+        report={},
     )
 
 

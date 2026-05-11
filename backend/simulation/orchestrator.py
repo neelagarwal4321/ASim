@@ -8,7 +8,9 @@ from agents.generator import generate_agents
 from llm.executor import llm_executor
 from llm.response_parser import parse_response
 from output.aggregator import compute_verdict
+from output.counterfactual_prober import run_probes
 from output.narrative_synthesizer import generate_narrative
+from output.report_assembler import assemble as assemble_report
 from services.redis_publisher import publish_round
 from simulation.action_selector import select_action
 from simulation.persuasion_engine import resolve_persuasion
@@ -32,6 +34,8 @@ class SimulationResult:
     distribution: dict
     top_agents: list[dict]
     narrative: str
+    counterfactuals: list[dict]
+    report: dict
 
 
 async def run_simulation(
@@ -118,12 +122,25 @@ async def run_simulation(
         if s.agent_id in agent_map
     ]
 
+    counterfactuals = run_probes(final_states, agents, verdict_data)
+    report = assemble_report(
+        scenario=scenario,
+        verdict=verdict_data,
+        narrative=narrative,
+        counterfactuals=counterfactuals,
+        top_agents=top_agents,
+        round_count=len(round_logs),
+        agent_count=len(final_states),
+    )
+
     result = SimulationResult(
         verdict=verdict_data["verdict"],
         confidence=verdict_data["confidence"],
         distribution=verdict_data["distribution"],
         top_agents=top_agents,
         narrative=narrative,
+        counterfactuals=counterfactuals,
+        report=report,
     )
 
     if simulation_id:
