@@ -9,7 +9,7 @@ const router = express.Router();
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
     const { rows } = await query(
-      'SELECT id, email, display_name, avatar_url, created_at FROM users WHERE id=$1',
+      'SELECT id, email, display_name, avatar_url, created_at FROM users WHERE id=$1 AND deleted_at IS NULL',
       [req.user.userId]
     );
     if (!rows.length) return res.status(404).json({ error: 'User not found' });
@@ -41,6 +41,16 @@ router.post('/me/api-key', requireAuth, async (req, res) => {
 
 router.delete('/me/api-key', requireAuth, async (req, res) => {
   res.json({ ok: true });
+});
+
+// Soft-delete the account and revoke all refresh tokens so existing sessions end.
+router.delete('/me', requireAuth, async (req, res, next) => {
+  try {
+    if (req.user.demo) return res.status(403).json({ error: 'Demo accounts cannot be deleted' });
+    await query('UPDATE users SET deleted_at=NOW(), updated_at=NOW() WHERE id=$1', [req.user.userId]);
+    await query('UPDATE refresh_tokens SET revoked=true WHERE user_id=$1 AND revoked=false', [req.user.userId]);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;
