@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, date as date_type
+from datetime import datetime, date as date_type, timezone
 from sqlalchemy import String, Float, Integer, Boolean, DateTime, Text, ForeignKey, JSON, Numeric, Date
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from db.database import Base
@@ -10,7 +10,7 @@ def _uuid() -> str:
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class User(Base):

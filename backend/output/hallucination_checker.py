@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from simulation.orchestrator import RoundResult
 
-WHIPLASH_DELTA = 0.25       # > 0.15 cap on purpose; 0.25 is "definitely off"
+WHIPLASH_DELTA = 0.14       # just below per-round hard cap of 0.15
 DETAILS_LIMIT = 20
 
 LEVEL_GREEN_MAX = 0.05

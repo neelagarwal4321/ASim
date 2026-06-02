@@ -5,11 +5,13 @@ from config import settings
 logger = logging.getLogger(__name__)
 
 _client: AsyncIOMotorClient | None = None
+_db = None
 
 
 def init_mongo():
-    global _client
+    global _client, _db
     _client = AsyncIOMotorClient(settings.mongodb_url)
+    _db = None  # will be lazily re-created from new client
     logger.info("MongoDB client initialized (post-fork)")
 
 
@@ -21,7 +23,10 @@ def get_mongo_client() -> AsyncIOMotorClient:
 
 
 def get_db():
-    return get_mongo_client()[settings.mongodb_db]
+    global _db
+    if _db is None:
+        _db = get_mongo_client()[settings.mongodb_db]
+    return _db
 
 
 def agent_states_col():         return get_db()["agent_states"]

@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 MoralAlignment = Literal["authoritarian", "libertarian", "utilitarian", "deontological", "nihilist"]
 AppealType = Literal["emotional", "rational", "social", "authority"]
-ActionType = str   # not a Literal — action_selector uses its own action set
+ActionType = Literal["debate", "persuade", "broadcast", "challenge", "agree", "withdraw", "rally"]
 EmotionType = str  # not a Literal — LLM returns arbitrary emotion strings
 
 

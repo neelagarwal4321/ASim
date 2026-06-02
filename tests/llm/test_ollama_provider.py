@@ -18,8 +18,9 @@ def _mock_http(text):
 
 
 async def test_complete_returns_text():
+    system_blocks = [{"type": "text", "text": "You are an agent."}]
     with patch("llm.ollama_provider.httpx.AsyncClient", return_value=_mock_http("hello")):
-        result = await OllamaProvider().complete("prompt")
+        result = await OllamaProvider().complete(system_blocks, "prompt")
     assert result == "hello"
 
 
@@ -37,8 +38,12 @@ async def test_complete_merges_system_parts():
     client.post = cap
     client.__aenter__ = AsyncMock(return_value=client)
     client.__aexit__ = AsyncMock(return_value=False)
+    system_blocks = [
+        {"type": "text", "text": "STATIC"},
+        {"type": "text", "text": "DYN"},
+    ]
     with patch("llm.ollama_provider.httpx.AsyncClient", return_value=client):
-        await OllamaProvider().complete("msg", static_system="STATIC", dynamic_context="DYN")
+        await OllamaProvider().complete(system_blocks, "msg")
     assert "STATIC" in captured["json"]["system"]
     assert "DYN" in captured["json"]["system"]
 
@@ -52,4 +57,4 @@ async def test_complete_raises_on_http_error():
     client.__aexit__ = AsyncMock(return_value=False)
     with patch("llm.ollama_provider.httpx.AsyncClient", return_value=client):
         with pytest.raises(Exception, match="404"):
-            await OllamaProvider().complete("hi")
+            await OllamaProvider().complete([], "hi")
