@@ -8,6 +8,7 @@ const { sanitizeScenario } = require('../middleware/sanitize');
 const { query } = require('../db/client');
 const { startSimulation, getSimulationStatus, controlSimulation } = require('../services/simulationService');
 const { getTierLimits, checkAndIncrementDaily, checkAndIncrementActive } = require('../services/tierService');
+const { getReport, setReport, invalidateReport } = require('../services/cacheService');
 
 const router = express.Router();
 
@@ -81,36 +82,54 @@ router.post('/', requireAuth, extractApiKey, sanitizeScenario,
 // GET /api/v1/simulate — list user simulations
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const page = parseInt(req.query.page) || 1;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const status = req.query.status || null;
     if (req.user.demo) {
-      return res.json({ simulations: [], page, limit });
+      return res.json({ data: [], meta: { page, limit, total: 0, has_more: false } });
     }
     const offset = (page - 1) * limit;
-    const { rows } = await query(
-      `SELECT id, scenario, agent_count, rounds, status, created_at
-       FROM simulation_configs
-       WHERE user_id=$1 AND deleted_at IS NULL
-       ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
-      [req.user.userId, limit, offset]
+    const statusClause = status ? 'AND status=$4' : '';
+    const baseParams = status ? [req.user.userId, status] : [req.user.userId];
+    const countRes = await query(
+      `SELECT COUNT(*) FROM simulation_configs WHERE user_id=$1 AND deleted_at IS NULL ${statusClause}`,
+      baseParams
     );
-    res.json({ simulations: rows, page, limit });
+    const total = parseInt(countRes.rows[0].count, 10);
+    const listParams = status
+      ? [req.user.userId, status, limit, offset]
+      : [req.user.userId, limit, offset];
+    const { rows } = await query(
+      `SELECT id, scenario, agent_count, rounds, status, estimated_cost, created_at
+       FROM simulation_configs
+       WHERE user_id=$1 AND deleted_at IS NULL ${status ? 'AND status=$2' : ''}
+       ORDER BY created_at DESC LIMIT $${status ? 3 : 2} OFFSET $${status ? 4 : 3}`,
+      listParams
+    );
+    res.json({ data: rows, meta: { page, limit, total, has_more: offset + rows.length < total } });
   } catch (err) { next(err); }
 });
 
 // GET /api/v1/simulate/:id
 router.get('/:id', requireAuth, async (req, res, next) => {
   try {
+    const cached = await getReport(req.params.id);
+    if (cached && cached.user_id === req.user.userId) return res.json(cached);
+
     const { rows } = await query(
       `SELECT sc.*, sr.verdict, sr.confidence, sr.distribution, sr.narrative,
-              sr.counterfactuals, sr.report, sr.avg_stance
+              sr.counterfactuals, sr.report, sr.avg_stance, sr.hallucination_level
        FROM simulation_configs sc
        LEFT JOIN simulation_results sr ON sr.simulation_id = sc.id
        WHERE sc.id=$1 AND sc.user_id=$2 AND sc.deleted_at IS NULL`,
       [req.params.id, req.user.userId]
     );
-    if (!rows.length) return res.status(404).json({ error: 'Simulation not found' });
-    res.json(rows[0]);
+    if (!rows.length) return res.status(404).json({ error: 'Simulation not found', code: 'NOT_FOUND' });
+    const row = rows[0];
+    if (row.status === 'complete') {
+      setReport(req.params.id, row).catch(() => {});
+    }
+    res.json(row);
   } catch (err) { next(err); }
 });
 
@@ -121,6 +140,7 @@ router.delete('/:id', requireAuth, async (req, res, next) => {
       `UPDATE simulation_configs SET deleted_at=NOW() WHERE id=$1 AND user_id=$2`,
       [req.params.id, req.user.userId]
     );
+    invalidateReport(req.params.id).catch(() => {}); // non-fatal
     res.json({ ok: true });
   } catch (err) { next(err); }
 });
