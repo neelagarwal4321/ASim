@@ -35,5 +35,5 @@ def test_stored_value_is_encrypted():
     fake = _fake()
     with patch("services.api_key_store.redis.from_url", return_value=fake):
         store_api_key("s3", "sk-plain")
-    raw = fake.get("sim:s3:apikey")
+    raw = fake.get("apikey:s3")
     assert b"sk-plain" not in raw

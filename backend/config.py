@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     fastapi_port: int = 8000
     secret_key: str = ""
     celery_broker_url: str = "redis://localhost:6379/0"
-    celery_result_backend: str = "redis://localhost:6379/1"
+    celery_result_backend: str = "redis://localhost:6379/0"
 
 
 settings = Settings()

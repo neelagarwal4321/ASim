@@ -18,14 +18,14 @@ def store_api_key(simulation_id: str, api_key: str, ttl_seconds: int = 3600) -> 
     """Encrypt and store user API key in Redis for simulation duration."""
     r = redis.from_url(settings.redis_url, decode_responses=False)
     token = _fernet().encrypt(api_key.encode())
-    r.setex(f"sim:{simulation_id}:apikey", ttl_seconds, token)
+    r.setex(f"apikey:{simulation_id}", ttl_seconds, token)
     logger.info("Stored encrypted API key for sim %s (TTL=%ds)", simulation_id, ttl_seconds)
 
 
 def retrieve_api_key(simulation_id: str) -> str | None:
     """Retrieve and decrypt user API key from Redis."""
     r = redis.from_url(settings.redis_url, decode_responses=False)
-    token = r.get(f"sim:{simulation_id}:apikey")
+    token = r.get(f"apikey:{simulation_id}")
     if not token:
         return None
     try:
@@ -37,4 +37,4 @@ def retrieve_api_key(simulation_id: str) -> str | None:
 
 def delete_api_key(simulation_id: str) -> None:
     r = redis.from_url(settings.redis_url, decode_responses=False)
-    r.delete(f"sim:{simulation_id}:apikey")
+    r.delete(f"apikey:{simulation_id}")

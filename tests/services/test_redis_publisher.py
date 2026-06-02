@@ -21,7 +21,7 @@ def test_publish_uses_correct_channel():
     with patch("services.redis_publisher.redis.from_url", return_value=fake):
         from services.redis_publisher import publish_round
         publish_round("sim-99", {"round": 1})
-    assert "sim:sim-99:rounds" in channels
+    assert "pubsub:sim:sim-99:rounds" in channels
 
 
 def test_publish_payload_is_json():

@@ -50,7 +50,9 @@ function subscribeIfNeeded(simulationId) {
   if (!messageListenerAttached) {
     messageListenerAttached = true;
     sub.on('message', (channel, message) => {
-      const id = channel.replace('sim:', '').replace(':rounds', '');
+      const match = channel.match(/^pubsub:sim:(.+):rounds$/);
+      if (!match) return;
+      const id = match[1];
       const clients = subs.get(id);
       if (!clients) return;
       clients.forEach((ws) => {
@@ -60,7 +62,7 @@ function subscribeIfNeeded(simulationId) {
   }
   if (subscribedSims.has(simulationId)) return;
   subscribedSims.add(simulationId);
-  sub.subscribe(`sim:${simulationId}:rounds`, (err) => {
+  sub.subscribe(`pubsub:sim:${simulationId}:rounds`, (err) => {
     if (err) logger.error(`Redis subscribe error: ${err.message}`);
   });
 }

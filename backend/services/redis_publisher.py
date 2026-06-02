@@ -16,8 +16,8 @@ def get_redis() -> redis.Redis:
 
 
 def publish_round(simulation_id: str, round_data: dict) -> None:
-    """Publish round result to Redis channel sim:{id}:rounds."""
-    channel = f"sim:{simulation_id}:rounds"
+    """Publish round result to Redis channel pubsub:sim:{id}:rounds."""
+    channel = f"pubsub:sim:{simulation_id}:rounds"
     payload = json.dumps(round_data)
     get_redis().publish(channel, payload)
     logger.debug("Published round to %s (%d bytes)", channel, len(payload))
