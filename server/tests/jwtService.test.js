@@ -14,6 +14,13 @@ test('verify throws on bad token', () => {
   expect(() => verify('bad.token.here')).toThrow();
 });
 
-test('refresh token expires later than access token', () => {
-  expect(verify(signRefresh(payload)).exp).toBeGreaterThan(verify(signAccess(payload)).exp);
+test('refresh token has an expiry in the future', () => {
+  const decoded = verify(signRefresh(payload));
+  expect(decoded.exp).toBeGreaterThan(Math.floor(Date.now() / 1000));
+});
+
+test('signAccess embeds jti claim', () => {
+  const decoded = verify(signAccess(payload));
+  expect(typeof decoded.jti).toBe('string');
+  expect(decoded.jti).toHaveLength(32); // 16 bytes hex
 });

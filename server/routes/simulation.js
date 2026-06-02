@@ -5,27 +5,53 @@ const { requireAuth } = require('../middleware/auth');
 const { extractApiKey } = require('../middleware/apiKey');
 const { query } = require('../db/client');
 const { startSimulation, getSimulationStatus, controlSimulation } = require('../services/simulationService');
+const { getTierLimits, checkAndIncrementDaily, checkAndIncrementActive } = require('../services/tierService');
 
 const router = express.Router();
 
-function newUUID() { return require('crypto').randomUUID(); }
-
-// POST /api/v1/simulate — create + start simulation
+// POST /api/v1/simulate — create + start simulation with tier enforcement
 router.post('/', requireAuth, extractApiKey,
-  body('scenario').isString().notEmpty(),
+  body('scenario').isString().notEmpty().isLength({ max: 2000 }),
   body('agentCount').optional().isInt({ min: 1, max: 500 }),
-  body('rounds').optional().isInt({ min: 1, max: 20 }),
+  body('rounds').optional().isInt({ min: 1, max: 200 }),
+  body('webhookUrl').optional().isURL(),
   validate,
   async (req, res, next) => {
     try {
-      const { scenario, agentCount = 50, rounds = 5, seed } = req.body;
-      const simulationId = newUUID();
+      const { scenario, agentCount = 50, rounds = 5, seed, webhookUrl } = req.body;
+      const role = req.user.role || 'free';
+      const userId = req.user.userId;
 
-      // Persist config to Postgres
+      const limits = await getTierLimits(role);
+      if (agentCount > limits.max_agents) {
+        return res.status(422).json({ error: `Agent count exceeds ${role} limit of ${limits.max_agents}`, code: 'TIER_AGENT_LIMIT' });
+      }
+      if (rounds > limits.max_rounds) {
+        return res.status(422).json({ error: `Rounds exceeds ${role} limit of ${limits.max_rounds}`, code: 'TIER_ROUND_LIMIT' });
+      }
+
+      const daily = await checkAndIncrementDaily(userId, role);
+      if (!daily.ok) {
+        return res.status(429)
+          .set('X-RateLimit-Limit', String(limits.max_daily_sims))
+          .set('X-RateLimit-Remaining', '0')
+          .set('X-RateLimit-Reset', String(daily.reset || ''))
+          .json({ error: 'Daily simulation quota exceeded', code: daily.code });
+      }
+
+      const active = await checkAndIncrementActive(userId, daily.limits);
+      if (!active.ok) {
+        return res.status(429).json({ error: 'Concurrent simulation limit reached', code: active.code });
+      }
+
+      // Cost estimate: agents × rounds × ~800 avg tokens × $0.000003/token
+      const estimatedCost = parseFloat((agentCount * rounds * 800 * 0.000003).toFixed(4));
+
+      const simulationId = require('crypto').randomUUID();
       await query(
-        `INSERT INTO simulation_configs(id, user_id, scenario, agent_count, rounds, seed, status)
-         VALUES($1,$2,$3,$4,$5,$6,'pending')`,
-        [simulationId, req.user.userId, scenario, agentCount, rounds, seed || null]
+        `INSERT INTO simulation_configs(id, user_id, scenario, agent_count, rounds, seed, status, webhook_url, estimated_cost)
+         VALUES($1,$2,$3,$4,$5,$6,'pending',$7,$8)`,
+        [simulationId, userId, scenario, agentCount, rounds, seed || null, webhookUrl || null, estimatedCost]
       );
 
       // Forward to FastAPI
@@ -36,13 +62,16 @@ router.post('/', requireAuth, extractApiKey,
           agent_count: agentCount,
           rounds,
           seed: seed || null,
+          user_id: userId,
         }, req.apiKey);
         await query(`UPDATE simulation_configs SET status='running' WHERE id=$1`, [simulationId]);
-      } catch (fastapiErr) {
-        // FastAPI offline is OK in dev — mark as pending
-      }
+      } catch (_) { /* FastAPI offline in dev — stays pending */ }
 
-      res.status(201).json({ simulation_id: simulationId });
+      res.status(201)
+        .set('X-RateLimit-Limit', String(daily.limits.max_daily_sims))
+        .set('X-RateLimit-Remaining', String(daily.remaining ?? daily.limits.max_daily_sims))
+        .set('X-RateLimit-Reset', String(daily.reset || ''))
+        .json({ simulation_id: simulationId, status: 'queued', estimated_cost: estimatedCost });
     } catch (err) { next(err); }
   }
 );

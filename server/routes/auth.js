@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
+const { RedisStore } = require('rate-limit-redis');
 const passport = require('passport');
 const { body } = require('express-validator');
 const { validate } = require('../middleware/validate');
@@ -12,15 +13,28 @@ const { getClient } = require('../services/redisService');
 
 const router = express.Router();
 
-const authLimiter = rateLimit({ windowMs: 60_000, max: 5, message: { error: 'Too many requests' } });
+const authLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 5,
+  message: { error: 'Too many requests', code: 'RATE_LIMIT_AUTH' },
+  store: new RedisStore({
+    sendCommand: (...args) => getClient().call(...args),
+    prefix: 'ratelimit:auth:',
+  }),
+});
 const DEMO_USER = { id: 'demo', email: 'demo@asim.ai', name: 'Demo User' };
 
 async function issueStoredSession(user) {
-  const accessToken = signAccess({ userId: user.id, email: user.email });
+  const role = user.role || 'free';
+  const accessToken = signAccess({ userId: user.id, email: user.email, role });
   const refreshToken = signRefresh({ userId: user.id, jti: crypto.randomBytes(16).toString('hex') });
+  const familyId = crypto.randomUUID();
   const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  await query('INSERT INTO refresh_tokens(user_id, token_hash, expires_at, revoked) VALUES($1,$2,$3,$4)', [user.id, tokenHash, expiresAt, false]);
+  await query(
+    'INSERT INTO refresh_tokens(user_id, token_hash, expires_at, revoked, family_id) VALUES($1,$2,$3,$4,$5)',
+    [user.id, tokenHash, expiresAt, false, familyId]
+  );
   return { accessToken, refreshToken };
 }
 
@@ -59,7 +73,7 @@ router.post('/signup', authLimiter,
 
       const password_hash = await bcrypt.hash(password, 12);
       const { rows } = await query(
-        'INSERT INTO users(email, password_hash, display_name) VALUES($1,$2,$3) RETURNING id, email, display_name',
+        'INSERT INTO users(email, password_hash, display_name) VALUES($1,$2,$3) RETURNING id, email, display_name, role',
         [email, password_hash, display_name || null]
       );
       const user = rows[0];
@@ -103,7 +117,7 @@ router.post('/refresh', async (req, res, next) => {
     );
     if (!rows.length) return res.status(401).json({ error: 'Refresh token revoked or expired' });
     await query('UPDATE refresh_tokens SET revoked=true WHERE token_hash=$1', [tokenHash]);
-    const userRows = await query('SELECT id, email FROM users WHERE id=$1', [payload.userId]);
+    const userRows = await query('SELECT id, email, role FROM users WHERE id=$1', [payload.userId]);
     if (!userRows.rows.length) return res.status(401).json({ error: 'User not found' });
     const user = userRows.rows[0];
     const tokens = await issueStoredSession(user);
@@ -156,7 +170,7 @@ router.post('/exchange', async (req, res, next) => {
     if (!raw) return res.status(400).json({ error: 'Invalid or expired code' });
     await redis.del(`oauth:code:${code}`);
     const { userId, email } = JSON.parse(raw);
-    const userRows = await query('SELECT id, email, display_name FROM users WHERE id=$1', [userId]);
+    const userRows = await query('SELECT id, email, display_name, role FROM users WHERE id=$1', [userId]);
     const user = userRows.rows[0];
     const { accessToken, refreshToken } = await issueStoredSession(user);
     res.json({ accessToken, refreshToken, user: { id: user.id, email: user.email, display_name: user.display_name } });

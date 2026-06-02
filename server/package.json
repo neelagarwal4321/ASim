@@ -14,7 +14,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.19.2",
-    "express-rate-limit": "^7.4.1",
+    "express-rate-limit": "^8.5.2",
     "express-validator": "^7.2.0",
     "helmet": "^8.0.0",
     "ioredis": "^5.4.1",
@@ -24,6 +24,7 @@
     "passport-github2": "^0.1.12",
     "passport-google-oauth20": "^2.0.0",
     "pg": "^8.13.1",
+    "rate-limit-redis": "^5.0.0",
     "winston": "^3.17.0",
     "ws": "^8.18.0"
   },

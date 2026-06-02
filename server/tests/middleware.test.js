@@ -8,12 +8,28 @@ jest.mock('../db/client', () => ({
   pool: { connect: jest.fn() },
 }));
 
+jest.mock('rate-limit-redis', () => ({
+  RedisStore: jest.fn().mockImplementation(() => ({
+    init: jest.fn().mockResolvedValue(undefined),
+    increment: jest.fn().mockResolvedValue({ totalHits: 1, resetTime: new Date() }),
+    decrement: jest.fn().mockResolvedValue(undefined),
+    resetKey: jest.fn().mockResolvedValue(undefined),
+  })),
+}));
+
+const mockRedisClient = {
+  publish: jest.fn(),
+  subscribe: jest.fn(),
+  on: jest.fn(),
+  get: jest.fn().mockResolvedValue(null),
+  set: jest.fn().mockResolvedValue('OK'),
+  call: jest.fn().mockResolvedValue(null),
+};
+
 jest.mock('../services/redisService', () => ({
-  getPublisher: jest.fn().mockReturnValue({ publish: jest.fn() }),
-  getSubscriber: jest.fn().mockReturnValue({
-    subscribe: jest.fn(),
-    on: jest.fn(),
-  }),
+  getPublisher: jest.fn().mockReturnValue(mockRedisClient),
+  getSubscriber: jest.fn().mockReturnValue(mockRedisClient),
+  getClient: jest.fn().mockReturnValue(mockRedisClient),
 }));
 
 const app = require('../index');
