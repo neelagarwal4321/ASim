@@ -25,18 +25,25 @@ async def _persist_result(simulation_id: str, result: dict) -> None:
     from db.database import AsyncSessionLocal
     from db.models import SimulationResult as SimResultModel, SimulationConfig
     dist = result["distribution"]
+    # Approximate avg_stance from bucketed distribution.
+    # SimulationResult does not carry raw per-agent stance values at this stage;
+    # use bucket midpoints as proxies (support≈0.8, undecided≈0.5, oppose≈0.2).
+    # dist values are fractions (0–1) that sum to ~1.0, so the result is a
+    # weighted average in [0.0, 1.0].
     avg_stance = (
         dist.get("support", 0) * 0.8
         + dist.get("undecided", 0) * 0.5
         + dist.get("oppose", 0) * 0.2
     )
+    # Clamp to valid range
+    avg_stance = max(0.0, min(1.0, round(avg_stance, 3)))
     async with AsyncSessionLocal() as session:
         session.add(SimResultModel(
             simulation_id=simulation_id,
             verdict=result["verdict"],
             confidence=result["confidence"],
             distribution=result["distribution"],
-            avg_stance=round(avg_stance, 3),
+            avg_stance=avg_stance,
             narrative=result["narrative"],
             counterfactuals=result.get("counterfactuals", []),
             report=result.get("report", {}),
@@ -91,6 +98,8 @@ def run_full_simulation(
     from simulation.orchestrator import run_simulation
     loop = asyncio.new_event_loop()
     try:
+        # checkpoint_fn writes sim:checkpoint:{id} = round_num after each round.
+        # On task retry/restart, start_round resumes from the last completed round.
         sim_result = loop.run_until_complete(
             run_simulation(
                 scenario=scenario,

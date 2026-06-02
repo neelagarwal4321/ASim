@@ -163,13 +163,20 @@ def postgres_vacuum_analyze():
     """Run VACUUM ANALYZE on high-write tables."""
     import asyncpg
 
+    # Whitelist — never interpolate user input into SQL
+    TABLES = ('simulation_configs', 'agent_profiles', 'relationship_edges', 'refresh_tokens')
+
     async def _vacuum():
-        conn = await asyncpg.connect(settings.database_url.replace('+asyncpg', ''))
-        tables = ['simulation_configs', 'agent_profiles', 'relationship_edges', 'refresh_tokens']
-        for table in tables:
-            await conn.execute(f'VACUUM ANALYZE {table}')
-            logger.info("VACUUM ANALYZE completed: %s", table)
-        await conn.close()
+        dsn = settings.database_url.replace('+asyncpg', '')
+        conn = await asyncpg.connect(dsn)
+        try:
+            for table in TABLES:
+                # Whitelist validation: table names must be alphanumeric + underscores only
+                assert table.replace('_', '').isalnum(), f"Invalid table name rejected: {table}"
+                await conn.execute(f'VACUUM ANALYZE "{table}"')  # quoted identifier
+                logger.info("VACUUM ANALYZE: %s", table)
+        finally:
+            await conn.close()
 
     asyncio.run(_vacuum())
     return {"ok": True}

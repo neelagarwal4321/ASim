@@ -1,10 +1,19 @@
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
+from config import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/internal")
+
+
+def _check_internal(x_internal_secret: str = Header(default="")):
+    # Use INTERNAL_API_SECRET if set, otherwise fall back to SECRET_KEY.
+    # Always enforce — never allow through when expected secret is empty.
+    expected = settings.internal_api_secret or settings.secret_key
+    if not expected or x_internal_secret != expected:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 class SimulationStartRequest(BaseModel):
@@ -37,7 +46,7 @@ class ControlRequest(BaseModel):
     action: str  # "pause" | "resume" | "cancel"
 
 
-@router.post("/simulate/start", response_model=SimulationStartResponse)
+@router.post("/simulate/start", response_model=SimulationStartResponse, dependencies=[Depends(_check_internal)])
 async def start_simulation(body: SimulationStartRequest) -> SimulationStartResponse:
     """Kick off a simulation via Celery task."""
     logger.info("start_simulation: id=%s scenario=%.50s", body.simulation_id, body.scenario)
@@ -57,23 +66,23 @@ async def start_simulation(body: SimulationStartRequest) -> SimulationStartRespo
     )
 
 
-@router.get("/simulate/{simulation_id}/status", response_model=SimulationStatusResponse)
+@router.get("/simulate/{simulation_id}/status", response_model=SimulationStatusResponse, dependencies=[Depends(_check_internal)])
 async def get_simulation_status(simulation_id: str) -> SimulationStatusResponse:
     return SimulationStatusResponse(simulation_id=simulation_id, status="unknown")
 
 
-@router.post("/simulate/{simulation_id}/inject-event")
+@router.post("/simulate/{simulation_id}/inject-event", dependencies=[Depends(_check_internal)])
 async def inject_event(simulation_id: str, body: InjectEventRequest) -> dict:
     logger.info("inject_event: sim=%s round=%d", simulation_id, body.round_num)
     return {"ok": True, "simulation_id": simulation_id}
 
 
-@router.post("/simulate/{simulation_id}/control")
+@router.post("/simulate/{simulation_id}/control", dependencies=[Depends(_check_internal)])
 async def control_simulation(simulation_id: str, body: ControlRequest) -> dict:
     logger.info("control: sim=%s action=%s", simulation_id, body.action)
     return {"ok": True, "simulation_id": simulation_id, "action": body.action}
 
 
-@router.get("/agents/{agent_id}")
+@router.get("/agents/{agent_id}", dependencies=[Depends(_check_internal)])
 async def get_agent(agent_id: str) -> dict:
     return {"agent_id": agent_id, "status": "stub"}

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     secret_key: str = ""
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/0"
+    internal_api_secret: str = ""
 
 
 settings = Settings()

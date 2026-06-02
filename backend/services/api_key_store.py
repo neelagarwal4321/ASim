@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import logging
 import redis
 from cryptography.fernet import Fernet
@@ -18,8 +19,10 @@ def _get_redis_client():
 
 # Derive a 32-byte Fernet key from SECRET_KEY
 def _fernet() -> Fernet:
-    raw = settings.secret_key.encode()[:32].ljust(32, b"0")
-    key = base64.urlsafe_b64encode(raw)
+    # PBKDF2 with SHA-256 — deterministic but cryptographically sound
+    raw = settings.secret_key.encode()
+    derived = hashlib.pbkdf2_hmac('sha256', raw, b'asim-apikey-v1', iterations=100_000, dklen=32)
+    key = base64.urlsafe_b64encode(derived)
     return Fernet(key)
 
 
