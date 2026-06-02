@@ -4,12 +4,27 @@ import os
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+from pythonjsonlogger import jsonlogger
+
+
+def setup_logging():
+    handler = logging.StreamHandler(sys.stdout)
+    formatter = jsonlogger.JsonFormatter(
+        '%(asctime)s %(levelname)s %(name)s %(message)s',
+        rename_fields={'asctime': 'timestamp', 'levelname': 'level', 'name': 'service'},
+    )
+    handler.setFormatter(formatter)
+    root = logging.getLogger()
+    root.handlers = [handler]
+    root.setLevel(logging.INFO)
+
+
+setup_logging()
+
 from fastapi import FastAPI
 from api.health import router as health_router
 from api.internal import router as internal_router
 from db.database import init_db
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 init_db()
 
