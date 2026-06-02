@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, date as date_type
 from sqlalchemy import String, Float, Integer, Boolean, DateTime, Text, ForeignKey, JSON, Numeric, Date
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from db.database import Base
@@ -163,7 +163,7 @@ class MetricsRollup(Base):
     __tablename__ = "metrics_rollup"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    date: Mapped[datetime] = mapped_column(DateTime, nullable=False, unique=True)
+    date: Mapped[date_type] = mapped_column(Date, nullable=False, unique=True)
     total_sims: Mapped[int] = mapped_column(Integer, default=0)
     verdict_distribution: Mapped[dict] = mapped_column(JSON, default=dict)
     avg_rounds: Mapped[float | None] = mapped_column(Float, nullable=True)
