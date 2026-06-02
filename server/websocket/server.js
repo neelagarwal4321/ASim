@@ -3,6 +3,8 @@ const { verify } = require('../services/jwtService');
 const { getSubscriber } = require('../services/redisService');
 const logger = require('../services/logger');
 
+const ROUND_CHANNEL_RE = /^pubsub:sim:(.+):rounds$/;
+
 const subs = new Map(); // simulationId -> Set<ws>
 const subscribedSims = new Set();
 let messageListenerAttached = false;
@@ -50,7 +52,7 @@ function subscribeIfNeeded(simulationId) {
   if (!messageListenerAttached) {
     messageListenerAttached = true;
     sub.on('message', (channel, message) => {
-      const match = channel.match(/^pubsub:sim:(.+):rounds$/);
+      const match = channel.match(ROUND_CHANNEL_RE);
       if (!match) return;
       const id = match[1];
       const clients = subs.get(id);
