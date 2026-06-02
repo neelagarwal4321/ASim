@@ -116,9 +116,14 @@ router.post('/refresh', async (req, res, next) => {
     if (!rows.length) return res.status(401).json({ error: 'Refresh token not found', code: 'TOKEN_REVOKED' });
 
     const token = rows[0];
-    if (token.revoked || new Date(token.expires_at) < new Date()) {
-      // Reuse detected — revoke entire family
-      await query('UPDATE refresh_tokens SET revoked=true WHERE family_id=$1', [token.family_id]);
+    if (new Date(token.expires_at) < new Date()) {
+      return res.status(401).json({ error: 'Refresh token expired', code: 'TOKEN_EXPIRED' });
+    }
+    if (token.revoked) {
+      // Reuse detection — revoke entire family
+      if (token.family_id) {
+        await query('UPDATE refresh_tokens SET revoked=true WHERE family_id=$1', [token.family_id]);
+      }
       return res.status(401).json({ error: 'Token reuse detected — all sessions revoked', code: 'TOKEN_REVOKED' });
     }
 
@@ -143,10 +148,9 @@ router.post('/logout', requireAuth, async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
     if (req.user.jti) {
-      const decoded = require('jsonwebtoken').decode(req.headers.authorization.slice(7));
-      const ttl = decoded?.exp ? decoded.exp - Math.floor(Date.now() / 1000) : 900;
-      if (ttl > 0) {
-        await getClient().set(`jwt:revoked:${req.user.jti}`, '1', 'EX', ttl);
+      const ttl = req.user.exp ? req.user.exp - Math.floor(Date.now() / 1000) : 900;
+      if (ttl >= 0) {
+        await getClient().set(`jwt:revoked:${req.user.jti}`, '1', 'EX', Math.max(1, ttl));
       }
     }
     if (refreshToken) {

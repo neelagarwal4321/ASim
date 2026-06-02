@@ -24,7 +24,7 @@ const app = express();
 // Security + logging
 app.use(helmet());
 const corsOrigin = process.env.NODE_ENV === 'production'
-  ? process.env.FRONTEND_URL
+  ? (process.env.FRONTEND_URL || 'https://invalid.example.com')
   : (origin, cb) => cb(null, /^http:\/\/localhost(:\d+)?$/.test(origin || '') ? origin : false);
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(morgan('dev', { stream: { write: (msg) => logger.info(msg.trim()) } }));

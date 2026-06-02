@@ -1,6 +1,6 @@
 // Module-level compiled patterns — O(1) per check, patterns don't reallocate
 const INJECTION_PATTERNS = [
-  /^system:/i,
+  /system:/i,
   /\[INST\]/i,
   /<<SYS>>/i,
   /ignore (?:previous|above|all) instructions/i,
