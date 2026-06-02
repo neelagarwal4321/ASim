@@ -108,10 +108,21 @@ def build_round_log(
         "total_events": cumulative_events,
     }
 
+    raw = [
+        distribution.get("support", 0.0),
+        distribution.get("oppose", 0.0),
+        distribution.get("undecided", 0.0),
+    ]
+    rounded = [int(round(x * 100)) for x in raw]
+    diff = 100 - sum(rounded)
+    if diff != 0:
+        max_idx = rounded.index(max(rounded))
+        rounded[max_idx] += diff
+    support_pct, oppose_pct, undecided_pct = rounded
     outcomes = [
-        {"label": "Support",   "pct": int(round(distribution.get("support", 0.0)   * 100)), "color": _OUTCOME_PALETTE["Support"]},
-        {"label": "Oppose",    "pct": int(round(distribution.get("oppose", 0.0)    * 100)), "color": _OUTCOME_PALETTE["Oppose"]},
-        {"label": "Undecided", "pct": int(round(distribution.get("undecided", 0.0) * 100)), "color": _OUTCOME_PALETTE["Undecided"]},
+        {"label": "Support",   "pct": support_pct,   "color": _OUTCOME_PALETTE["Support"]},
+        {"label": "Oppose",    "pct": oppose_pct,    "color": _OUTCOME_PALETTE["Oppose"]},
+        {"label": "Undecided", "pct": undecided_pct, "color": _OUTCOME_PALETTE["Undecided"]},
     ]
 
     events: list[dict] = []  # Phase 2: derive significant persuasion events here.

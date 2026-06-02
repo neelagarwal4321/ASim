@@ -101,8 +101,8 @@ class RelationshipEdgeDB(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     simulation_id: Mapped[str] = mapped_column(String(36), ForeignKey("simulation_configs.id"), nullable=False)
-    from_agent_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    to_agent_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    from_agent_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_profiles.id"), nullable=False)
+    to_agent_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_profiles.id"), nullable=False)
     trust_score: Mapped[float] = mapped_column(Float, default=0.5)
     interaction_count: Mapped[int] = mapped_column(Integer, default=0)
     betrayed: Mapped[bool] = mapped_column(Boolean, default=False)

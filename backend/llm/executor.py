@@ -1,7 +1,11 @@
+import asyncio
 import logging
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+# Retryable HTTP status codes: rate limit, server errors, bad gateway, etc.
+_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
 class LLMExecutor:
@@ -21,7 +25,8 @@ class LLMExecutor:
         dynamic_context: str = "",
         api_key: str | None = None,
     ) -> str:
-        for attempt in range(1, 3):
+        last_exc: Exception | None = None
+        for attempt in range(1, 4):  # 3 attempts with exponential backoff: 0s, 2s, 4s
             try:
                 return await self._provider.complete(
                     user_message=user_message,
@@ -30,11 +35,21 @@ class LLMExecutor:
                     api_key=api_key,
                 )
             except Exception as exc:
-                if attempt == 1:
-                    logger.warning("LLM call attempt 1 failed: %s, retrying...", exc)
-                else:
-                    logger.error("LLM call attempt 2 failed: %s, raising", exc)
+                last_exc = exc
+                status = getattr(exc, 'status_code', None) or getattr(exc, 'status', None)
+                is_retryable = (
+                    status in _RETRYABLE_STATUS_CODES
+                    or isinstance(exc, (TimeoutError, ConnectionError))
+                )
+                if not is_retryable or attempt == 3:
+                    logger.error("LLM execute failed (attempt %d/3): %s", attempt, exc)
                     raise
+                wait = 2 ** (attempt - 1)  # 1s after attempt 1, 2s after attempt 2
+                logger.warning(
+                    "LLM execute retrying (attempt %d/3) after %ds: %s", attempt, wait, exc
+                )
+                await asyncio.sleep(wait)
+        raise last_exc  # type: ignore[misc]
 
 
 llm_executor = LLMExecutor()

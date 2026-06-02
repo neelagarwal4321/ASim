@@ -72,7 +72,12 @@ class SimulationState:
 
 
 class StateManager:
-    """Simple per-simulation in-memory state store used by Phase 1 tests."""
+    """
+    Tracks mutable simulation state: agent stances, emotions, trust edges.
+
+    Default trust between any two agents is 0.5 (neutral), not 0.
+    Trust range: [0.0, 1.0] where 0=adversarial, 0.5=neutral, 1.0=full trust.
+    """
 
     def __init__(self) -> None:
         self._states: dict[str, AgentState] = {}
@@ -96,6 +101,7 @@ class StateManager:
         return self._trust.get((agent_a_id, agent_b_id), 0.5)
 
     def update_trust(self, agent_a_id: str, agent_b_id: str, delta: float) -> None:
+        assert agent_a_id != agent_b_id, "Cannot set self-trust"
         key = (agent_a_id, agent_b_id)
         current = self._trust.get(key, 0.5)
         self._trust[key] = max(0.0, min(1.0, current + delta))

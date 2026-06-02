@@ -25,11 +25,15 @@ def select_action(
     actions = list(_ACTION_WEIGHT_FNS.keys())
     weights = [max(0.01, fn(traits)) for fn in _ACTION_WEIGHT_FNS.values()]
 
+    if not actions or sum(weights) == 0:
+        return ("abstain", None)
     action: ActionType = rng.choices(actions, weights=weights, k=1)[0]
 
     if action in _TARGETED_ACTIONS:
         candidates = [aid for aid in all_agent_ids if aid != agent.id]
-        target = rng.choice(candidates) if candidates else None
+        if not candidates:
+            return (action, None)  # no valid target
+        target = rng.choice(candidates)
     else:
         target = None
 

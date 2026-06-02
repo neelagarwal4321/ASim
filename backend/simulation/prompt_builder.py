@@ -1,3 +1,5 @@
+import json
+
 from agents.models import AgentProfile, AgentState, ActionType
 
 
@@ -88,7 +90,7 @@ def build_prompt(
 
     # Block 6: Action instruction + JSON spec
     target_str = f" directed at {target_name}" if target_name else ""
-    target_id_val = f'"{target_name}"' if target_name else "null"
+    target_id_val = json.dumps(target_name) if target_name else "null"
     block6 = (
         f"Your action this round: {action}{target_str}.\n\n"
         f"Respond in character as {agent.name}. Stay true to your voice and beliefs.\n\n"
