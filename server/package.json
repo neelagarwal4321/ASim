@@ -25,6 +25,8 @@
     "passport-google-oauth20": "^2.0.0",
     "pg": "^8.13.1",
     "rate-limit-redis": "^5.0.0",
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1",
     "winston": "^3.17.0",
     "ws": "^8.18.0"
   },

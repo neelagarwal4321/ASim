@@ -12,7 +12,50 @@ const { getReport, setReport, invalidateReport } = require('../services/cacheSer
 
 const router = express.Router();
 
-// POST /api/v1/simulate — create + start simulation with tier enforcement
+/**
+ * @openapi
+ * /simulate:
+ *   post:
+ *     summary: Create and queue a simulation
+ *     tags: [Simulations]
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [scenario]
+ *             properties:
+ *               scenario: { type: string, maxLength: 2000 }
+ *               agentCount: { type: integer, minimum: 1, maximum: 500, default: 50 }
+ *               rounds: { type: integer, minimum: 1, maximum: 200, default: 5 }
+ *               seed: { type: integer }
+ *               webhookUrl: { type: string, format: uri }
+ *     responses:
+ *       201:
+ *         description: Simulation queued
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 simulation_id: { type: string, format: uuid }
+ *                 status: { type: string, example: queued }
+ *                 estimated_cost: { type: number, example: 0.42 }
+ *       422:
+ *         description: Tier limit exceeded
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ *       429:
+ *         description: Rate limit exceeded
+ *         content:
+ *           application/json:
+ *             schema: { $ref: '#/components/schemas/Error' }
+ */
 router.post('/', requireAuth, extractApiKey, sanitizeScenario,
   body('scenario').isString().notEmpty().isLength({ max: 2000 }),
   body('agentCount').optional().isInt({ min: 1, max: 500 }),
@@ -79,7 +122,35 @@ router.post('/', requireAuth, extractApiKey, sanitizeScenario,
   }
 );
 
-// GET /api/v1/simulate — list user simulations
+/**
+ * @openapi
+ * /simulate:
+ *   get:
+ *     summary: List user simulations
+ *     tags: [Simulations]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20, maximum: 100 }
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [pending, running, complete, failed, cancelled] }
+ *     responses:
+ *       200:
+ *         description: Paginated simulation list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items: { $ref: '#/components/schemas/SimulationConfig' }
+ *                 meta: { $ref: '#/components/schemas/PaginationMeta' }
+ */
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);

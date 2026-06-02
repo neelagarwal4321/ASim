@@ -43,7 +43,15 @@ app.use('/api/v1/users', usersRouter);
 app.use('/api/v1/scenarios', scenariosRouter);
 
 // Health
-app.get('/health', (req, res) => res.json({ status: 'ok', service: 'asim-node' }));
+app.get('/health', (req, res) => res.json({ status: 'ok', service: 'asim-node', timestamp: new Date().toISOString() }));
+
+// OpenAPI docs (dev only)
+if (process.env.NODE_ENV !== 'production') {
+  const swaggerUi = require('swagger-ui-express');
+  const swaggerSpec = require('./docs/openapi');
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+  app.get('/api/docs.json', (req, res) => res.json(swaggerSpec));
+}
 
 // Error handler
 app.use(errorHandler);
