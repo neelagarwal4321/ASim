@@ -28,7 +28,7 @@ def _compose_entry(action: RoundAction, distribution: dict, round_num: int) -> s
     parts.append(f"stance={action.stance:.2f}")
     parts.append(f"emo={action.emotion}")
     if distribution:
-        dominant_label = max(distribution, key=distribution.get)
+        dominant_label = max(distribution, key=distribution.get, default="undecided")
         dominant_value = distribution[dominant_label]
         parts.append(f"crowd={dominant_label}{int(dominant_value * 100)}%")
     return ":".join(parts)
@@ -51,8 +51,12 @@ def _compress(entries: list[str]) -> list[str]:
 
     older = entries[:-MAX_RECENT]
     recent = entries[-MAX_RECENT:]
-    head = older[0]
-    extra = sum(_decode_sum(e) for e in older)
+    # Separate any existing SUM tag from plain entries so we don't double-count.
+    # A SUM(N) entry already represents N collapsed rounds; plain entries each count as 1.
+    sum_entry = next((e for e in older if e.startswith("SUM(")), None)
+    existing_total = _decode_sum(sum_entry) if sum_entry else 0
+    fresh_entries = [e for e in older if not e.startswith("SUM(")]
+    extra = existing_total + sum(_decode_sum(e) for e in fresh_entries)
     summary = f"SUM({extra})"
     return [summary] + recent
 

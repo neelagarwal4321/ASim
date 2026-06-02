@@ -5,8 +5,10 @@ def compute_verdict(states: list[AgentState]) -> dict:
     """Pure Python: compute dominant outcome from final agent states."""
     n = len(states)
     if n == 0:
-        return {"verdict": "No agents participated", "confidence": 0.0,
-                "distribution": {"support": 0.0, "oppose": 0.0, "undecided": 0.0}, "avg_stance": 0.0}
+        return {"verdict": "No data — simulation produced no agent states.",
+                "confidence": 0.0,
+                "distribution": {"support": 0.0, "oppose": 0.0, "undecided": 1.0},
+                "avg_stance": 0.0}
 
     support = [s for s in states if s.stance >= 0.6]
     oppose = [s for s in states if s.stance <= 0.4]

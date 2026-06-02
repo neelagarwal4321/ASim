@@ -1,3 +1,5 @@
+import os
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +21,13 @@ class Settings(BaseSettings):
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/0"
     internal_api_secret: str = ""
+
+    @field_validator("secret_key")
+    @classmethod
+    def secret_key_must_be_set(cls, v: str) -> str:
+        if not v and os.getenv("APP_ENV", "development") == "production":
+            raise ValueError("SECRET_KEY must be set in production")
+        return v
 
 
 settings = Settings()

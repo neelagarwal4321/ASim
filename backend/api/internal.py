@@ -9,10 +9,10 @@ router = APIRouter(prefix="/internal")
 
 
 def _check_internal(x_internal_secret: str = Header(default="")):
-    # Use INTERNAL_API_SECRET if set, otherwise fall back to SECRET_KEY.
-    # Always enforce — never allow through when expected secret is empty.
-    expected = settings.internal_api_secret or settings.secret_key
-    if not expected or x_internal_secret != expected:
+    expected = settings.internal_api_secret
+    if not expected:
+        raise HTTPException(status_code=503, detail="INTERNAL_API_SECRET not configured")
+    if x_internal_secret != expected:
         raise HTTPException(status_code=403, detail="Forbidden")
 
 
@@ -23,6 +23,7 @@ class SimulationStartRequest(BaseModel):
     rounds: int = 5
     seed: int | None = None
     api_key_redis_key: str | None = None
+    user_id: str = ""
 
 
 class SimulationStartResponse(BaseModel):
@@ -58,6 +59,7 @@ async def start_simulation(body: SimulationStartRequest) -> SimulationStartRespo
         body.rounds,
         body.seed,
         body.api_key_redis_key or "",
+        body.user_id,
     )
     return SimulationStartResponse(
         ok=True,

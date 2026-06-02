@@ -51,7 +51,18 @@ def test_control_pause():
     assert r.status_code == 200
 
 
-def test_rejects_missing_secret():
-    r = client.post("/internal/simulate/start",
-                    json={"simulation_id": SIM, "scenario": "Test"})
+def test_rejects_wrong_secret():
+    with patch("api.internal.settings") as mock_settings:
+        mock_settings.internal_api_secret = SECRET
+        r = client.post("/internal/simulate/start",
+                        json={"simulation_id": SIM, "scenario": "Test"},
+                        headers={"X-Internal-Secret": "wrong-secret"})
     assert r.status_code == 403
+
+
+def test_rejects_unconfigured_secret():
+    with patch("api.internal.settings") as mock_settings:
+        mock_settings.internal_api_secret = ""
+        r = client.post("/internal/simulate/start",
+                        json={"simulation_id": SIM, "scenario": "Test"})
+    assert r.status_code == 503

@@ -73,17 +73,27 @@ async def run_simulation(
 
     for round_num in range(start_round + 1, rounds + 1):
         logger.info("Round %d/%d", round_num, rounds)
-        actions = await _run_round(
-            scenario=scenario,
-            agents=agents,
-            agent_map=agent_map,
-            state_mgr=state_mgr,
-            round_num=round_num,
-            total_rounds=rounds,
-            rng=rng,
-            api_key=api_key,
-            prior_distribution=round_logs[-1].stance_distribution if round_logs else None,
-        )
+        try:
+            async with asyncio.timeout(300):
+                actions = await _run_round(
+                    scenario=scenario,
+                    agents=agents,
+                    agent_map=agent_map,
+                    state_mgr=state_mgr,
+                    round_num=round_num,
+                    total_rounds=rounds,
+                    rng=rng,
+                    api_key=api_key,
+                    prior_distribution=round_logs[-1].stance_distribution if round_logs else None,
+                )
+        except TimeoutError:
+            logger.error("Round %d timed out for sim=%s", round_num, simulation_id)
+            if checkpoint_fn:
+                try:
+                    checkpoint_fn(round_num - 1)
+                except Exception as exc:
+                    logger.warning("Checkpoint write failed on timeout round %d: %s", round_num, exc)
+            raise RuntimeError(f"Simulation timed out at round {round_num}")
 
         all_states = state_mgr.get_all_states()
         n = len(all_states)
@@ -125,33 +135,44 @@ async def run_simulation(
                 logger.warning("Redis publish round %d failed: %s", round_num, exc)
 
     final_states = state_mgr.get_all_states()
-    verdict_data = compute_verdict(final_states)
-    narrative = await generate_narrative(
-        scenario=scenario,
-        round_logs=round_logs,
-        verdict=verdict_data,
-        api_key=api_key,
-    )
 
-    sorted_states = sorted(final_states, key=lambda s: s.influence_score, reverse=True)
-    top_agents = [
-        {"agent": agent_map[s.agent_id], "state": s}
-        for s in sorted_states[:3]
-        if s.agent_id in agent_map
-    ]
+    verdict_data: dict = {"verdict": "unknown", "confidence": 0.0, "distribution": {"support": 0.0, "oppose": 0.0, "undecided": 1.0}, "avg_stance": 0.0}
+    narrative: str = "Report generation failed."
+    counterfactuals: list = []
+    hallucination: dict = {"level": "green"}
+    report: dict = {}
+    top_agents: list = []
 
-    counterfactuals = run_probes(final_states, agents, verdict_data)
-    hallucination = check_hallucinations(round_logs, {a.id for a in agents})
-    report = assemble_report(
-        scenario=scenario,
-        verdict=verdict_data,
-        narrative=narrative,
-        counterfactuals=counterfactuals,
-        top_agents=top_agents,
-        round_count=len(round_logs),
-        agent_count=len(final_states),
-        hallucination=hallucination,
-    )
+    try:
+        verdict_data = compute_verdict(final_states)
+
+        sorted_states = sorted(final_states, key=lambda s: s.influence_score, reverse=True)
+        top_agents = [
+            {"agent": agent_map[s.agent_id], "state": s}
+            for s in sorted_states[:3]
+            if s.agent_id in agent_map
+        ]
+
+        narrative = await generate_narrative(
+            scenario=scenario,
+            round_logs=round_logs,
+            verdict=verdict_data,
+            api_key=api_key,
+        )
+        counterfactuals = run_probes(final_states, agents, verdict_data)
+        hallucination = check_hallucinations(round_logs, {a.id for a in agents})
+        report = assemble_report(
+            scenario=scenario,
+            verdict=verdict_data,
+            narrative=narrative,
+            counterfactuals=counterfactuals,
+            top_agents=top_agents,
+            round_count=len(round_logs),
+            agent_count=len(final_states),
+            hallucination=hallucination,
+        )
+    except Exception as exc:
+        logger.error("Output pipeline failed for sim=%s: %s", simulation_id, exc)
 
     result = SimulationResult(
         verdict=verdict_data["verdict"],

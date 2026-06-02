@@ -95,22 +95,17 @@ def run_full_simulation(
         logger.warning("api_key_store unavailable: %s", exc)
         api_key = None
 
-    from simulation.orchestrator import run_simulation
-    loop = asyncio.new_event_loop()
-    try:
-        # checkpoint_fn writes sim:checkpoint:{id} = round_num after each round.
-        # On task retry/restart, start_round resumes from the last completed round.
-        sim_result = loop.run_until_complete(
-            run_simulation(
-                scenario=scenario,
-                agent_count=agent_count,
-                rounds=rounds,
-                seed=seed,
-                api_key=api_key,
-                simulation_id=simulation_id,
-                start_round=start_round,
-                checkpoint_fn=lambda rn: r.set(_checkpoint_key(simulation_id), rn, ex=7200),
-            )
+    async def _full_task() -> dict:
+        from simulation.orchestrator import run_simulation
+        sim_result = await run_simulation(
+            scenario=scenario,
+            agent_count=agent_count,
+            rounds=rounds,
+            seed=seed,
+            api_key=api_key,
+            simulation_id=simulation_id,
+            start_round=start_round,
+            checkpoint_fn=lambda rn: r.set(_checkpoint_key(simulation_id), rn, ex=7200),
         )
         result = {
             "simulation_id": simulation_id,
@@ -124,22 +119,28 @@ def run_full_simulation(
             "status": "complete",
         }
         try:
-            loop.run_until_complete(_persist_result(simulation_id, result))
+            await _persist_result(simulation_id, result)
         except Exception as exc:
             logger.error("DB persist failed sim=%s: %s", simulation_id, exc)
-            loop.run_until_complete(_update_status(simulation_id, "failed"))
+            await _update_status(simulation_id, "failed")
+        return result
+
+    try:
+        # checkpoint_fn writes sim:checkpoint:{id} = round_num after each round.
+        # On task retry/restart, start_round resumes from the last completed round.
+        result = asyncio.run(_full_task())
 
         r.delete(_checkpoint_key(simulation_id))
         if user_id:
             r.decr(_active_key(user_id))
 
-        logger.info("run_full_simulation done: sim=%s verdict=%s", simulation_id, sim_result.verdict)
+        logger.info("run_full_simulation done: sim=%s verdict=%s", simulation_id, result["verdict"])
         return result
 
     except SoftTimeLimitExceeded:
         logger.warning("Soft time limit exceeded sim=%s", simulation_id)
         try:
-            loop.run_until_complete(_update_status(simulation_id, "failed"))
+            asyncio.run(_update_status(simulation_id, "failed"))
         except Exception:
             pass
         if user_id:
@@ -150,10 +151,7 @@ def run_full_simulation(
     except Exception as exc:
         logger.exception("run_full_simulation failed: sim=%s", simulation_id)
         try:
-            loop.run_until_complete(_update_status(simulation_id, "failed"))
+            asyncio.run(_update_status(simulation_id, "failed"))
         except Exception:
             pass
         raise self.retry(exc=exc, countdown=5)
-
-    finally:
-        loop.close()
