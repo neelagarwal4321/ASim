@@ -10,8 +10,8 @@ def test_extract_sim_ids():
 
 def test_watchdog_stale_detection():
     # age > max_dur is stale
-    updated_at = datetime.datetime.utcnow() - datetime.timedelta(hours=3)
-    age = (datetime.datetime.utcnow() - updated_at).total_seconds()
+    updated_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(hours=3)
+    age = (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - updated_at).total_seconds()
     assert age > 1800  # free tier max = 1800s
 
 
@@ -30,11 +30,11 @@ def test_is_stale_helper():
     from tasks.cron_tasks import _is_stale
 
     # 2 hours old, max 1800s (30 min) — stale
-    old_time = datetime.datetime.utcnow() - datetime.timedelta(hours=2)
+    old_time = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(hours=2)
     assert _is_stale(old_time, 1800) is True
 
     # 10 seconds old, max 3600s — not stale
-    fresh_time = datetime.datetime.utcnow() - datetime.timedelta(seconds=10)
+    fresh_time = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(seconds=10)
     assert _is_stale(fresh_time, 3600) is False
 
 

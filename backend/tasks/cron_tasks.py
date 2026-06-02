@@ -20,7 +20,7 @@ def _extract_sim_ids_from_api_keys(keys: list[str]) -> list[str]:
 
 
 def _is_stale(updated_at: datetime.datetime, max_duration_seconds: int) -> bool:
-    age = (datetime.datetime.utcnow() - updated_at).total_seconds()
+    age = (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - updated_at).total_seconds()
     return age > max_duration_seconds
 
 
@@ -64,7 +64,7 @@ def archive_old_simulations():
     async def _archive():
         client = AsyncIOMotorClient(settings.mongodb_url)
         db = client[settings.mongodb_db]
-        cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=90)
+        cutoff = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(days=90)
 
         cursor = db.round_logs.find({"created_at": {"$lt": cutoff}}, batch_size=100)
         moved = 0
@@ -134,7 +134,7 @@ def rollup_daily_metrics():
         from db.database import AsyncSessionLocal
         from sqlalchemy import text
         async with AsyncSessionLocal() as session:
-            yesterday = (datetime.datetime.utcnow() - datetime.timedelta(days=1)).date()
+            yesterday = (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - datetime.timedelta(days=1)).date()
             result = await session.execute(text("""
                 SELECT COUNT(*) as total, AVG(rounds) as avg_rounds
                 FROM simulation_configs
