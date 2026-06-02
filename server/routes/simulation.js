@@ -1,5 +1,6 @@
 const express = require('express');
 const { body } = require('express-validator');
+const { randomUUID } = require('crypto');
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
 const { extractApiKey } = require('../middleware/apiKey');
@@ -47,7 +48,7 @@ router.post('/', requireAuth, extractApiKey,
       // Cost estimate: agents × rounds × ~800 avg tokens × $0.000003/token
       const estimatedCost = parseFloat((agentCount * rounds * 800 * 0.000003).toFixed(4));
 
-      const simulationId = require('crypto').randomUUID();
+      const simulationId = randomUUID();
       await query(
         `INSERT INTO simulation_configs(id, user_id, scenario, agent_count, rounds, seed, status, webhook_url, estimated_cost)
          VALUES($1,$2,$3,$4,$5,$6,'pending',$7,$8)`,
