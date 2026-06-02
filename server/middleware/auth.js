@@ -12,22 +12,21 @@ async function requireAuth(req, res, next) {
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token', code: 'TOKEN_EXPIRED' });
   }
-  if (payload.jti) {
-    if (payload.demo) {
-      // Demo tokens are never blacklisted — skip Redis round-trip
-      req.user = payload;
-      return next();
-    }
+  if (payload.jti && !payload.demo) {
     try {
       const revoked = await getClient().exists(`jwt:revoked:${payload.jti}`);
-      if (revoked) {
+      if (revoked === 1) {
         return res.status(401).json({ error: 'Token has been revoked', code: 'TOKEN_REVOKED' });
       }
     } catch (err) {
-      // Redis unavailable — log and fail open to avoid taking down all auth
       const logger = require('../services/logger');
-      logger.warn({ err }, 'Redis unavailable for JWT blacklist check — allowing request');
+      logger.error({ err }, 'Redis unavailable for JWT blacklist check — rejecting request');
+      return res.status(503).json({ error: 'Service temporarily unavailable', code: 'SERVICE_UNAVAILABLE' });
     }
+  } else if (payload.jti && payload.demo) {
+    // Demo tokens are never blacklisted — skip Redis round-trip
+    req.user = payload;
+    return next();
   }
   req.user = payload;
   next();

@@ -26,6 +26,11 @@ app.use(helmet());
 const corsOrigin = process.env.NODE_ENV === 'production'
   ? (process.env.FRONTEND_URL || 'https://invalid.example.com')
   : (origin, cb) => cb(null, /^http:\/\/localhost(:\d+)?$/.test(origin || '') ? origin : false);
+
+if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_URL) {
+  throw new Error('FRONTEND_URL environment variable is required in production');
+}
+
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(morgan('dev', { stream: { write: (msg) => logger.info(msg.trim()) } }));
 app.use(express.json({ limit: '1mb' }));
