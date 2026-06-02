@@ -4,12 +4,12 @@ import os
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 
 
 def setup_logging():
     handler = logging.StreamHandler(sys.stdout)
-    formatter = jsonlogger.JsonFormatter(
+    formatter = JsonFormatter(
         '%(asctime)s %(levelname)s %(name)s %(message)s',
         rename_fields={'asctime': 'timestamp', 'levelname': 'level', 'name': 'service'},
     )
