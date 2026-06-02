@@ -81,7 +81,15 @@ function subscribeIfNeeded(simulationId) {
   if (subscribedSims.has(simulationId)) return;
   subscribedSims.add(simulationId);
   sub.subscribe(`pubsub:sim:${simulationId}:rounds`, (err) => {
-    if (err) logger.error(`Redis subscribe error: ${err.message}`);
+    if (err) {
+      subscribedSims.delete(simulationId); // allow retry on next connection
+      logger.error(`Redis subscribe error for sim=${simulationId}: ${err.message}`);
+      const clients = subs.get(simulationId);
+      if (clients) {
+        const msg = JSON.stringify({ type: 'error', payload: { code: 'SUBSCRIPTION_FAILED', message: 'Real-time updates unavailable' } });
+        clients.forEach((ws) => { if (ws.readyState === ws.OPEN) ws.send(msg); });
+      }
+    }
   });
 }
 

@@ -1,6 +1,15 @@
 const { query } = require('../db/client');
 const { getClient } = require('./redisService');
 
+// Atomic: INCR and set expiry in one script
+const LUA_INCR_EXPIRE = `
+  local count = redis.call('INCR', KEYS[1])
+  if count == 1 then
+    redis.call('EXPIREAT', KEYS[1], ARGV[1])
+  end
+  return count
+`;
+
 // Module-level defaults — O(1) lookup by role key
 const TIER_DEFAULTS = {
   free:  { max_agents: 50,  max_rounds: 10,  max_daily_sims: 10,  max_concurrent: 1,  max_duration_seconds: 1800 },
@@ -37,15 +46,15 @@ function getMidnightUTC() {
 async function checkAndIncrementDaily(userId, role) {
   const limits = await getTierLimits(role);
   if (limits.max_daily_sims >= 9999) return { ok: true, limits };
-  const redis = getClient();
+  const redisClient = getClient();
   const key = `ratelimit:sim:daily:${userId}`;
-  const count = await redis.incr(key);
-  if (count === 1) await redis.expireat(key, getMidnightUTC());
+  const midnight = getMidnightUTC();
+  const count = await redisClient.eval(LUA_INCR_EXPIRE, 1, key, midnight);
   if (count > limits.max_daily_sims) {
-    await redis.decr(key);
-    return { ok: false, code: 'RATE_LIMIT_DAILY', limits, reset: getMidnightUTC() };
+    await redisClient.decr(key);
+    return { ok: false, code: 'RATE_LIMIT_DAILY', limits, reset: midnight };
   }
-  return { ok: true, limits, remaining: limits.max_daily_sims - count, reset: getMidnightUTC() };
+  return { ok: true, limits, remaining: limits.max_daily_sims - count, reset: midnight };
 }
 
 async function checkAndIncrementActive(userId, limits) {

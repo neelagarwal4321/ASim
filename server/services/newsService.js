@@ -39,21 +39,40 @@ async function fetchFiltered(count = 3) {
     return FALLBACK.slice(0, count)
   }
 
-  const categories = ['politics', 'technology', 'science', 'health', 'general']
-  const allArticles = []
+  const CATEGORIES = ['politics', 'technology', 'science', 'health', 'general']
 
-  for (const category of categories) {
-    try {
-      const res = await axios.get('https://newsapi.org/v2/top-headlines', {
-        params: { category, language: 'en', pageSize: 10 },
-        headers: { 'X-Api-Key': key },
-        timeout: 8000,
-      })
-      if (res.data?.articles) allArticles.push(...res.data.articles)
-    } catch (err) {
-      logger.warn(`newsService: failed fetching category ${category}: ${err.message}`)
-    }
+  async function fetchCategory(category) {
+    const res = await axios.get('https://newsapi.org/v2/top-headlines', {
+      params: { category, language: 'en', pageSize: 10 },
+      headers: { 'X-Api-Key': key },
+      timeout: 8000,
+    })
+    return res.data?.articles || []
   }
+
+  // Fetch all categories in parallel
+  const results = await Promise.allSettled(
+    CATEGORIES.map(cat => fetchCategory(cat))
+  )
+
+  // Collect successful results only
+  const articles = results
+    .filter(r => r.status === 'fulfilled')
+    .flatMap(r => r.value)
+
+  results
+    .filter(r => r.status === 'rejected')
+    .forEach((r, i) => {
+      logger.warn(`newsService: failed fetching category ${CATEGORIES[i]}: ${r.reason?.message}`)
+    })
+
+  // Deduplicate by URL
+  const seen = new Set()
+  const allArticles = articles.filter(a => {
+    if (!a.url || seen.has(a.url)) return false
+    seen.add(a.url)
+    return true
+  })
 
   if (!allArticles.length) {
     logger.warn('newsService: no articles fetched — returning fallback')
@@ -66,18 +85,18 @@ async function fetchFiltered(count = 3) {
     .filter(({ score }) => score > 0)
     .sort((a, b) => b.score - a.score)
 
-  const results = scored.slice(0, count).map(({ article }) => ({
+  const scenarios = scored.slice(0, count).map(({ article }) => ({
     scenario: cleanHeadline(article.title),
     source: article.source?.name || null,
   }))
 
   // Pad with fallback if not enough qualifying articles
-  const fallbackNeeded = count - results.length
+  const fallbackNeeded = count - scenarios.length
   if (fallbackNeeded > 0) {
-    results.push(...FALLBACK.slice(0, fallbackNeeded))
+    scenarios.push(...FALLBACK.slice(0, fallbackNeeded))
   }
 
-  return results
+  return scenarios
 }
 
 module.exports = { fetchFiltered, FALLBACK }

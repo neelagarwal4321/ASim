@@ -38,7 +38,9 @@ function setupOAuth(app) {
 async function findOrCreateOAuthUser(provider, providerUserId, email, displayName) {
   // Check if oauth account exists
   const existing = await query(
-    'SELECT u.* FROM users u JOIN oauth_accounts oa ON u.id = oa.user_id WHERE oa.provider=$1 AND oa.provider_user_id=$2',
+    `SELECT u.* FROM users u
+     JOIN oauth_accounts oa ON u.id = oa.user_id
+     WHERE oa.provider=$1 AND oa.provider_user_id=$2 AND u.deleted_at IS NULL`,
     [provider, String(providerUserId)]
   );
   if (existing.rows.length) return existing.rows[0];

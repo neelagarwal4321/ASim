@@ -13,7 +13,12 @@ router.get('/suggestions', async (req, res) => {
   try {
     const cached = await getClient().get(CACHE_KEY)
     if (cached) {
-      return res.json({ suggestions: JSON.parse(cached) })
+      try {
+        return res.json({ suggestions: JSON.parse(cached) })
+      } catch {
+        // Corrupted cache entry — delete and fall through to fetch
+        await getClient().del(CACHE_KEY).catch(() => {})
+      }
     }
   } catch (err) {
     logger.warn(`scenarios: Redis read failed: ${err.message}`)
