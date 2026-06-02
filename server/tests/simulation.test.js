@@ -26,6 +26,7 @@ const mockRedisClient = {
   on: jest.fn(),
   get: jest.fn().mockResolvedValue(null),
   set: jest.fn().mockResolvedValue('OK'),
+  exists: jest.fn().mockResolvedValue(0),
   incr: jest.fn().mockResolvedValue(1),
   decr: jest.fn().mockResolvedValue(0),
   expire: jest.fn().mockResolvedValue(1),

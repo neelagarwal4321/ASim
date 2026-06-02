@@ -23,10 +23,9 @@ const app = express();
 
 // Security + logging
 app.use(helmet());
-const corsOrigin = process.env.CORS_ORIGIN ||
-  (process.env.NODE_ENV !== 'production'
-    ? (origin, cb) => cb(null, /^http:\/\/localhost(:\d+)?$/.test(origin || '') ? origin : false)
-    : 'http://localhost:5173');
+const corsOrigin = process.env.NODE_ENV === 'production'
+  ? process.env.FRONTEND_URL
+  : (origin, cb) => cb(null, /^http:\/\/localhost(:\d+)?$/.test(origin || '') ? origin : false);
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(morgan('dev', { stream: { write: (msg) => logger.info(msg.trim()) } }));
 app.use(express.json({ limit: '1mb' }));

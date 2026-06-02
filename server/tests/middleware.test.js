@@ -17,20 +17,22 @@ jest.mock('rate-limit-redis', () => ({
   })),
 }));
 
-const mockRedisClient = {
-  publish: jest.fn(),
-  subscribe: jest.fn(),
-  on: jest.fn(),
-  get: jest.fn().mockResolvedValue(null),
-  set: jest.fn().mockResolvedValue('OK'),
-  call: jest.fn().mockResolvedValue(null),
-};
-
-jest.mock('../services/redisService', () => ({
-  getPublisher: jest.fn().mockReturnValue(mockRedisClient),
-  getSubscriber: jest.fn().mockReturnValue(mockRedisClient),
-  getClient: jest.fn().mockReturnValue(mockRedisClient),
-}));
+jest.mock('../services/redisService', () => {
+  const client = {
+    publish: jest.fn(),
+    subscribe: jest.fn(),
+    on: jest.fn(),
+    get: jest.fn().mockResolvedValue(null),
+    set: jest.fn().mockResolvedValue('OK'),
+    exists: jest.fn().mockResolvedValue(0),
+    call: jest.fn().mockResolvedValue(null),
+  };
+  return {
+    getPublisher: jest.fn().mockReturnValue(client),
+    getSubscriber: jest.fn().mockReturnValue(client),
+    getClient: jest.fn().mockReturnValue(client),
+  };
+});
 
 const app = require('../index');
 
@@ -41,17 +43,17 @@ function mkReqRes() {
   return { req, res, next };
 }
 
-test('requireAuth calls next with valid token', () => {
+test('requireAuth calls next with valid token', async () => {
   const { req, res, next } = mkReqRes();
   req.headers.authorization = `Bearer ${signAccess({ id: 'u1', email: 'x@y.com' })}`;
-  requireAuth(req, res, next);
+  await requireAuth(req, res, next);
   expect(next).toHaveBeenCalled();
   expect(req.user.id).toBe('u1');
 });
 
-test('requireAuth returns 401 without header', () => {
+test('requireAuth returns 401 without header', async () => {
   const { req, res, next } = mkReqRes();
-  requireAuth(req, res, next);
+  await requireAuth(req, res, next);
   expect(res.status).toHaveBeenCalledWith(401);
 });
 

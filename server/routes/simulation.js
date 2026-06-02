@@ -4,6 +4,7 @@ const { randomUUID } = require('crypto');
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
 const { extractApiKey } = require('../middleware/apiKey');
+const { sanitizeScenario } = require('../middleware/sanitize');
 const { query } = require('../db/client');
 const { startSimulation, getSimulationStatus, controlSimulation } = require('../services/simulationService');
 const { getTierLimits, checkAndIncrementDaily, checkAndIncrementActive } = require('../services/tierService');
@@ -11,7 +12,7 @@ const { getTierLimits, checkAndIncrementDaily, checkAndIncrementActive } = requi
 const router = express.Router();
 
 // POST /api/v1/simulate — create + start simulation with tier enforcement
-router.post('/', requireAuth, extractApiKey,
+router.post('/', requireAuth, extractApiKey, sanitizeScenario,
   body('scenario').isString().notEmpty().isLength({ max: 2000 }),
   body('agentCount').optional().isInt({ min: 1, max: 500 }),
   body('rounds').optional().isInt({ min: 1, max: 200 }),

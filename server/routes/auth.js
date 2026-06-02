@@ -22,7 +22,6 @@ const authLimiter = rateLimit({
     prefix: 'ratelimit:auth:',
   }),
 });
-const DEMO_USER = { id: 'demo', email: 'demo@asim.ai', name: 'Demo User' };
 
 async function issueStoredSession(user) {
   const role = user.role || 'free';
@@ -39,9 +38,12 @@ async function issueStoredSession(user) {
 }
 
 function issueDemoSession() {
+  const demoId = `demo:${crypto.randomUUID()}`;
+  const demoUser = { id: demoId, email: 'demo@asim.ai', name: 'Demo User', role: 'free' };
   return {
-    accessToken: signAccess({ userId: DEMO_USER.id, email: DEMO_USER.email, demo: true }),
-    refreshToken: signRefresh({ userId: DEMO_USER.id, demo: true }),
+    accessToken: signAccess({ userId: demoId, email: demoUser.email, role: 'free', demo: true }),
+    refreshToken: signRefresh({ userId: demoId, demo: true }),
+    user: demoUser,
   };
 }
 
@@ -57,8 +59,8 @@ async function issueOAuthCode(user) {
 }
 
 router.post('/demo', (req, res) => {
-  const { accessToken, refreshToken } = issueDemoSession();
-  res.json({ accessToken, refreshToken, user: DEMO_USER });
+  const session = issueDemoSession();
+  res.json(session);
 });
 
 router.post('/signup', authLimiter,
@@ -104,30 +106,49 @@ router.post('/login', authLimiter,
 router.post('/refresh', async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
-    if (!refreshToken) return res.status(400).json({ error: 'refreshToken required' });
+    if (!refreshToken) return res.status(400).json({ error: 'refreshToken required', code: 'VALIDATION_ERROR' });
     let payload;
-    try { payload = verify(refreshToken); } catch { return res.status(401).json({ error: 'Invalid refresh token' }); }
-    if (payload.demo) {
-      return res.json(issueDemoSession());
-    }
+    try { payload = verify(refreshToken); } catch { return res.status(401).json({ error: 'Invalid refresh token', code: 'TOKEN_EXPIRED' }); }
+    if (payload.demo) return res.json(issueDemoSession());
+
     const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-    const { rows } = await query(
-      'SELECT * FROM refresh_tokens WHERE token_hash=$1 AND revoked=false AND expires_at > NOW()',
-      [tokenHash]
-    );
-    if (!rows.length) return res.status(401).json({ error: 'Refresh token revoked or expired' });
+    const { rows } = await query('SELECT * FROM refresh_tokens WHERE token_hash=$1', [tokenHash]);
+    if (!rows.length) return res.status(401).json({ error: 'Refresh token not found', code: 'TOKEN_REVOKED' });
+
+    const token = rows[0];
+    if (token.revoked || new Date(token.expires_at) < new Date()) {
+      // Reuse detected — revoke entire family
+      await query('UPDATE refresh_tokens SET revoked=true WHERE family_id=$1', [token.family_id]);
+      return res.status(401).json({ error: 'Token reuse detected — all sessions revoked', code: 'TOKEN_REVOKED' });
+    }
+
     await query('UPDATE refresh_tokens SET revoked=true WHERE token_hash=$1', [tokenHash]);
     const userRows = await query('SELECT id, email, role FROM users WHERE id=$1', [payload.userId]);
-    if (!userRows.rows.length) return res.status(401).json({ error: 'User not found' });
+    if (!userRows.rows.length) return res.status(401).json({ error: 'User not found', code: 'NOT_FOUND' });
     const user = userRows.rows[0];
-    const tokens = await issueStoredSession(user);
-    res.json(tokens);
+
+    const newAccessToken = signAccess({ userId: user.id, email: user.email, role: user.role || 'free' });
+    const newRefreshToken = signRefresh({ userId: user.id, jti: crypto.randomBytes(16).toString('hex') });
+    const newHash = crypto.createHash('sha256').update(newRefreshToken).digest('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await query(
+      'INSERT INTO refresh_tokens(user_id, token_hash, expires_at, revoked, family_id) VALUES($1,$2,$3,$4,$5)',
+      [user.id, newHash, expiresAt, false, token.family_id]
+    );
+    res.json({ accessToken: newAccessToken, refreshToken: newRefreshToken });
   } catch (err) { next(err); }
 });
 
 router.post('/logout', requireAuth, async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
+    if (req.user.jti) {
+      const decoded = require('jsonwebtoken').decode(req.headers.authorization.slice(7));
+      const ttl = decoded?.exp ? decoded.exp - Math.floor(Date.now() / 1000) : 900;
+      if (ttl > 0) {
+        await getClient().set(`jwt:revoked:${req.user.jti}`, '1', 'EX', ttl);
+      }
+    }
     if (refreshToken) {
       const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
       await query('UPDATE refresh_tokens SET revoked=true WHERE token_hash=$1', [tokenHash]);

@@ -21,6 +21,7 @@ const mockRedisClient = {
   get: jest.fn().mockResolvedValue(null),
   set: jest.fn().mockResolvedValue('OK'),
   del: jest.fn().mockResolvedValue(1),
+  exists: jest.fn().mockResolvedValue(0),
   incr: jest.fn().mockResolvedValue(1),
   decr: jest.fn().mockResolvedValue(0),
   expire: jest.fn().mockResolvedValue(1),
@@ -74,21 +75,31 @@ test('POST /api/v1/auth/demo returns signed demo session without database access
   const r = await request(app).post('/api/v1/auth/demo').send();
 
   expect(r.status).toBe(200);
-  expect(r.body.user).toEqual({ id: 'demo', email: 'demo@asim.ai', name: 'Demo User' });
+  expect(r.body.user.id).toMatch(/^demo:/);
+  expect(r.body.user.email).toBe('demo@asim.ai');
+  expect(r.body.user.name).toBe('Demo User');
   expect(r.body.accessToken).toBeTruthy();
   expect(r.body.refreshToken).toBeTruthy();
-  expect(verify(r.body.accessToken)).toMatchObject({ userId: 'demo', email: 'demo@asim.ai', demo: true });
+  const tokenPayload = verify(r.body.accessToken);
+  expect(tokenPayload.userId).toMatch(/^demo:/);
+  expect(tokenPayload.email).toBe('demo@asim.ai');
+  expect(tokenPayload.demo).toBe(true);
   expect(query).not.toHaveBeenCalled();
 });
 
 test('POST /api/v1/auth/refresh rotates demo tokens without database access', async () => {
-  const refreshToken = require('../services/jwtService').signRefresh({ userId: 'demo', demo: true });
+  // Issue a demo session first to get a valid demo refresh token with a demo: UUID userId
+  const demoRes = await request(app).post('/api/v1/auth/demo').send();
+  const refreshToken = demoRes.body.refreshToken;
 
   const r = await request(app).post('/api/v1/auth/refresh').send({ refreshToken });
 
   expect(r.status).toBe(200);
   expect(r.body.accessToken).toBeTruthy();
   expect(r.body.refreshToken).toBeTruthy();
-  expect(verify(r.body.accessToken)).toMatchObject({ userId: 'demo', email: 'demo@asim.ai', demo: true });
+  const tokenPayload = verify(r.body.accessToken);
+  expect(tokenPayload.userId).toMatch(/^demo:/);
+  expect(tokenPayload.email).toBe('demo@asim.ai');
+  expect(tokenPayload.demo).toBe(true);
   expect(query).not.toHaveBeenCalled();
 });
