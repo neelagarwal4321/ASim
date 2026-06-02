@@ -185,7 +185,7 @@ router.get('/', requireAuth, async (req, res, next) => {
 router.get('/:id', requireAuth, async (req, res, next) => {
   try {
     const cached = await getReport(req.params.id);
-    if (cached && cached.user_id === req.user.userId) return res.json(cached);
+    if (cached && cached.user_id && cached.user_id === req.user.userId) return res.json(cached);
 
     const { rows } = await query(
       `SELECT sc.*, sr.verdict, sr.confidence, sr.distribution, sr.narrative,

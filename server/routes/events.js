@@ -1,4 +1,5 @@
 const express = require('express');
+const { randomUUID } = require('crypto');
 const { body } = require('express-validator');
 const { validate } = require('../middleware/validate');
 const { requireAuth } = require('../middleware/auth');
@@ -15,7 +16,7 @@ router.post('/inject-event', requireAuth, extractApiKey,
   async (req, res, next) => {
     try {
       const { round_num, event_text } = req.body;
-      const eventId = require('crypto').randomUUID();
+      const eventId = randomUUID();
       await query(
         'INSERT INTO injected_events(id, simulation_id, round_num, event_text) VALUES($1,$2,$3,$4)',
         [eventId, req.params.id, round_num, event_text]

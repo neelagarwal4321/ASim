@@ -12,8 +12,8 @@ const CACHE_KEY = 'cache:tier_config';
 const CACHE_TTL_SECONDS = 300;
 
 async function getTierLimits(role) {
-  const redis = getClient();
-  const cached = await redis.get(CACHE_KEY);
+  const redisClient = getClient();
+  const cached = await redisClient.get(CACHE_KEY);
   if (cached) {
     const config = JSON.parse(cached);
     return config[role] || TIER_DEFAULTS[role] || TIER_DEFAULTS.free;
@@ -22,7 +22,7 @@ async function getTierLimits(role) {
     const { rows } = await query('SELECT * FROM tier_config');
     if (rows.length) {
       const config = Object.fromEntries(rows.map(r => [r.role, r]));
-      await redis.set(CACHE_KEY, JSON.stringify(config), 'EX', CACHE_TTL_SECONDS);
+      await redisClient.set(CACHE_KEY, JSON.stringify(config), 'EX', CACHE_TTL_SECONDS);
       return config[role] || TIER_DEFAULTS[role] || TIER_DEFAULTS.free;
     }
   } catch (_) { /* DB unavailable — fall through */ }

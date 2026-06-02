@@ -9,6 +9,9 @@ const subs = new Map(); // simulationId -> Set<ws>
 const subscribedSims = new Set();
 let messageListenerAttached = false;
 
+const clientCounts = new Map(); // userId -> count
+const MAX_CONNECTIONS_PER_USER = 5;
+
 function setupWebSocket(server) {
   const wss = new WebSocketServer({ noServer: true });
 
@@ -18,7 +21,17 @@ function setupWebSocket(server) {
     if (!match) { socket.destroy(); return; }
 
     const token = url.searchParams.get('token');
-    try { verify(token); } catch { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); socket.destroy(); return; }
+    let payload;
+    try { payload = verify(token); } catch { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); socket.destroy(); return; }
+
+    const userId = payload.userId || 'anon';
+    const count = clientCounts.get(userId) || 0;
+    if (count >= MAX_CONNECTIONS_PER_USER) {
+      socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    clientCounts.set(userId, count + 1);
 
     wss.handleUpgrade(req, socket, head, (ws) => {
       const simulationId = match[1];
@@ -37,6 +50,9 @@ function setupWebSocket(server) {
       }, 30000);
 
       ws.on('close', () => {
+        const c = clientCounts.get(userId) || 1;
+        if (c <= 1) clientCounts.delete(userId);
+        else clientCounts.set(userId, c - 1);
         const set = subs.get(simulationId);
         if (set) { set.delete(ws); if (!set.size) subs.delete(simulationId); }
         clearInterval(heartbeat);

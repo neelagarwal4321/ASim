@@ -93,9 +93,11 @@ router.post('/login', authLimiter,
     try {
       const { email, password } = req.body;
       const { rows } = await query('SELECT * FROM users WHERE email=$1 AND deleted_at IS NULL', [email]);
-      if (!rows.length || !rows[0].password_hash) return res.status(401).json({ error: 'Invalid credentials' });
-      const valid = await bcrypt.compare(password, rows[0].password_hash);
-      if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+      // Always run bcrypt regardless of whether user exists to prevent timing-based email enumeration
+      const dummyHash = '$2b$12$invalidhashfortimingprotection00000000000000000000000000';
+      const hash = rows[0]?.password_hash || dummyHash;
+      const valid = await bcrypt.compare(password, hash);
+      if (!rows.length || !valid) return res.status(401).json({ error: 'Invalid credentials', code: 'INVALID_CREDENTIALS' });
       const user = rows[0];
       const { accessToken, refreshToken } = await issueStoredSession(user);
       res.json({ accessToken, refreshToken, user: { id: user.id, email: user.email } });
