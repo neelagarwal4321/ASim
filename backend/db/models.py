@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Float, Integer, Boolean, DateTime, Text, ForeignKey, JSON
+from sqlalchemy import String, Float, Integer, Boolean, DateTime, Text, ForeignKey, JSON, Numeric, Date
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from db.database import Base
 
@@ -24,6 +24,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    role: Mapped[str] = mapped_column(String(20), default="free")
 
     oauth_accounts: Mapped[list["OAuthAccount"]] = relationship(back_populates="user")
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user")
@@ -50,6 +51,7 @@ class RefreshToken(Base):
     token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    family_id: Mapped[str] = mapped_column(String(36), default=_uuid)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     user: Mapped["User"] = relationship(back_populates="refresh_tokens")
@@ -68,6 +70,9 @@ class SimulationConfig(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    webhook_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    estimated_cost: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="simulations")
     result: Mapped["SimulationResult | None"] = relationship(back_populates="config", uselist=False)
@@ -140,4 +145,27 @@ class ApiKeyAudit(Base):
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
     action: Mapped[str] = mapped_column(String(20), nullable=False)  # "set" | "delete" | "use"
     simulation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class TierConfig(Base):
+    __tablename__ = "tier_config"
+
+    role: Mapped[str] = mapped_column(String(20), primary_key=True)
+    max_agents: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_rounds: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_daily_sims: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_concurrent: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class MetricsRollup(Base):
+    __tablename__ = "metrics_rollup"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    date: Mapped[datetime] = mapped_column(DateTime, nullable=False, unique=True)
+    total_sims: Mapped[int] = mapped_column(Integer, default=0)
+    verdict_distribution: Mapped[dict] = mapped_column(JSON, default=dict)
+    avg_rounds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    provider_usage: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
