@@ -1,6 +1,22 @@
+const request = require('supertest');
 const { signAccess } = require('../services/jwtService');
 const { requireAuth } = require('../middleware/auth');
 const { extractApiKey } = require('../middleware/apiKey');
+
+jest.mock('../db/client', () => ({
+  query: jest.fn().mockResolvedValue({ rows: [] }),
+  pool: { connect: jest.fn() },
+}));
+
+jest.mock('../services/redisService', () => ({
+  getPublisher: jest.fn().mockReturnValue({ publish: jest.fn() }),
+  getSubscriber: jest.fn().mockReturnValue({
+    subscribe: jest.fn(),
+    on: jest.fn(),
+  }),
+}));
+
+const app = require('../index');
 
 function mkReqRes() {
   const req = { headers: {} };
@@ -34,4 +50,15 @@ test('extractApiKey sets null when header absent', () => {
   const { req, res, next } = mkReqRes();
   extractApiKey(req, res, next);
   expect(req.apiKey).toBeNull();
+});
+
+test('attaches X-Request-ID to every response', async () => {
+  const res = await request(app).get('/health');
+  expect(res.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+});
+
+test('echoes client-provided X-Request-ID', async () => {
+  const id = 'test-req-123';
+  const res = await request(app).get('/health').set('X-Request-ID', id);
+  expect(res.headers['x-request-id']).toBe(id);
 });

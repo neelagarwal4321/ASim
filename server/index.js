@@ -8,6 +8,7 @@ const morgan = require('morgan');
 
 const { setupOAuth } = require('./services/oauthService');
 const { setupWebSocket } = require('./websocket/server');
+const { requestId } = require('./middleware/requestId');
 const { errorHandler } = require('./middleware/errorHandler');
 const logger = require('./services/logger');
 
@@ -29,6 +30,7 @@ const corsOrigin = process.env.CORS_ORIGIN ||
 app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(morgan('dev', { stream: { write: (msg) => logger.info(msg.trim()) } }));
 app.use(express.json({ limit: '1mb' }));
+app.use(requestId);
 
 // OAuth
 setupOAuth(app);
