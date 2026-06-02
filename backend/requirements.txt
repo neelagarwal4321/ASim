@@ -17,3 +17,5 @@ redis==5.2.0
 cryptography==44.0.0
 pytest-mock==3.14.0
 fakeredis==2.26.2
+gevent
+redbeat

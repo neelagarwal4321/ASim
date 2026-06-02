@@ -50,6 +50,8 @@ async def run_simulation(
     seed: int | None = None,
     api_key: str | None = None,
     simulation_id: str | None = None,
+    start_round: int = 0,
+    checkpoint_fn=None,
 ) -> SimulationResult:
     rng = random.Random(seed)
     agents = generate_agents(count=agent_count, seed=seed)
@@ -69,7 +71,7 @@ async def run_simulation(
     prev_cohesion: float | None = None
     prev_entropy: float | None = None
 
-    for round_num in range(1, rounds + 1):
+    for round_num in range(start_round + 1, rounds + 1):
         logger.info("Round %d/%d", round_num, rounds)
         actions = await _run_round(
             scenario=scenario,
@@ -114,6 +116,11 @@ async def run_simulation(
                 publish_round(simulation_id, {"type": envelope["type"], "payload": envelope["payload"]})
                 prev_cohesion = envelope["cohesion"]
                 prev_entropy = envelope["entropy"]
+                if checkpoint_fn:
+                    try:
+                        checkpoint_fn(round_num)
+                    except Exception as exc:
+                        logger.warning("Checkpoint write failed round %d: %s", round_num, exc)
             except Exception as exc:
                 logger.warning("Redis publish round %d failed: %s", round_num, exc)
 
