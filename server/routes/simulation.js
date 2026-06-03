@@ -7,7 +7,7 @@ const { extractApiKey } = require('../middleware/apiKey');
 const { sanitizeScenario } = require('../middleware/sanitize');
 const { query } = require('../db/client');
 const { startSimulation, getSimulationStatus, controlSimulation } = require('../services/simulationService');
-const { getTierLimits, checkAndIncrementDaily, checkAndIncrementActive } = require('../services/tierService');
+const { getTierLimits, checkAndIncrementDaily, checkAndIncrementActive, decrementActive } = require('../services/tierService');
 const { getReport, setReport, invalidateReport } = require('../services/cacheService');
 
 const router = express.Router();
@@ -111,7 +111,9 @@ router.post('/', requireAuth, extractApiKey, sanitizeScenario,
           user_id: userId,
         }, req.apiKey);
         await query(`UPDATE simulation_configs SET status='running' WHERE id=$1`, [simulationId]);
-      } catch (_) { /* FastAPI offline in dev — stays pending */ }
+      } catch (_) {
+        await decrementActive(userId).catch(() => {});
+      }
 
       res.status(201)
         .set('X-RateLimit-Limit', String(daily.limits.max_daily_sims))

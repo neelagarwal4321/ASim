@@ -1,4 +1,12 @@
 import logging
+import os
+import sys
+
+# Ensure backend/ is on sys.path so all backend modules resolve correctly
+_backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
+
 from celery import Celery
 from celery.signals import worker_init
 from config import settings

@@ -3,6 +3,7 @@ const axios = require('axios');
 const client = axios.create({
   baseURL: process.env.FASTAPI_INTERNAL_URL || 'http://localhost:8000',
   timeout: 30000,
+  headers: { 'X-Internal-Secret': process.env.INTERNAL_API_SECRET || '' },
 });
 
 async function startSimulation(payload, apiKey) {

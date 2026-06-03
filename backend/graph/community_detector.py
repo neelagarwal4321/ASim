@@ -25,11 +25,11 @@ from agents.models import AgentProfile, AgentState
 
 # Stance buckets (lower bound inclusive, upper bound exclusive — last is closed).
 _BUCKETS = [
-    (0.00, 0.20, "Strong Oppose",  "var(--state-error)"),
-    (0.20, 0.40, "Lean Oppose",    "var(--aurora-rose)"),
-    (0.40, 0.60, "Undecided",      "var(--text-secondary)"),
-    (0.60, 0.80, "Lean Support",   "var(--aurora-teal)"),
-    (0.80, 1.01, "Strong Support", "var(--state-success)"),
+    (0.00, 0.20, "Strong Oppose",  "#FF3B6F"),
+    (0.20, 0.40, "Lean Oppose",    "#FF6B9D"),
+    (0.40, 0.60, "Undecided",      "#8A9BBE"),
+    (0.60, 0.80, "Lean Support",   "#00D4C8"),
+    (0.80, 1.01, "Strong Support", "#00C96B"),
 ]
 
 TRUST_EDGE_THRESHOLD = 0.55
@@ -102,19 +102,19 @@ def detect_communities(
         bucket["members"].append(a.id)
 
     communities: list[dict] = []
-    counter = 0
     for bucket in buckets.values():
         components = _bfs_components(bucket["members"], trust)
         # If trust hasn't formed yet, every component is size 1 and we'd
         # drop everything. Fall back to the bucket itself as one community.
         if all(len(c) == 1 for c in components):
             components = [bucket["members"]]
-        for comp in components:
-            if len(comp) < MIN_COMMUNITY_SIZE:
-                continue
-            counter += 1
+        eligible = [c for c in components if len(c) >= MIN_COMMUNITY_SIZE]
+        for idx, comp in enumerate(eligible):
+            # Stable ID: slug of bucket name + sub-index so the frontend can
+            # track the same community across rounds.
+            slug = bucket["name"].lower().replace(" ", "-")
             communities.append({
-                "id": f"c{counter}",
+                "id": f"{slug}-{idx}",
                 "name": bucket["name"],
                 "color": bucket["color"],
                 "member_ids": comp,

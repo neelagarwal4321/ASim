@@ -68,6 +68,16 @@ const server = http.createServer(app);
 setupWebSocket(server);
 
 if (require.main === module) {
+  // Clear stale active-sim counters from previous run
+  const { getClient } = require('./services/redisService');
+  const redis = getClient();
+  redis.keys('ratelimit:sim:*').then(keys => {
+    if (keys.length) {
+      redis.del(...keys).catch(() => {});
+      logger.info(`Cleared ${keys.length} stale rate-limit Redis key(s)`);
+    }
+  }).catch(() => {});
+
   server.listen(PORT, () => {
     logger.info(`ASim Node server listening on port ${PORT}`);
   });

@@ -5,15 +5,17 @@ const logger = require('../services/logger');
 
 const ROUND_CHANNEL_RE = /^pubsub:sim:(.+):rounds$/;
 
-const subs = new Map(); // simulationId -> Set<ws>
-const subscribedSims = new Set();
+const subs = new Map();            // simulationId -> Set<ws>
+const subscribedSims = new Set();  // simulationIds with active Redis subscriptions
 let messageListenerAttached = false;
 
-const clientCounts = new Map(); // userId -> count
-const MAX_CONNECTIONS_PER_USER = 5;
+const clientCounts = new Map();  // userId -> count
+const MAX_CONNECTIONS_PER_USER = 20;
 
 function setupWebSocket(server) {
   const wss = new WebSocketServer({ noServer: true });
+
+  wss.on('error', (err) => logger.error('WSS error: ' + err.message));
 
   server.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -22,18 +24,24 @@ function setupWebSocket(server) {
 
     const token = url.searchParams.get('token');
     let payload;
-    try { payload = verify(token); } catch { socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); socket.destroy(); return; }
+    try { payload = verify(token); } catch (e) {
+      logger.warn('WS auth failed: ' + e.message);
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n'); socket.destroy(); return;
+    }
 
     const userId = payload.userId || 'anon';
     const count = clientCounts.get(userId) || 0;
     if (count >= MAX_CONNECTIONS_PER_USER) {
+      logger.warn('WS limit hit user=' + userId + ' count=' + count);
       socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
       socket.destroy();
       return;
     }
-    clientCounts.set(userId, count + 1);
 
     wss.handleUpgrade(req, socket, head, (ws) => {
+      // Increment only after successful upgrade so count never leaks
+      clientCounts.set(userId, (clientCounts.get(userId) || 0) + 1);
+      logger.info('WS connected sim=' + match[1] + ' user=' + userId);
       const simulationId = match[1];
       if (!subs.has(simulationId)) subs.set(simulationId, new Set());
       subs.get(simulationId).add(ws);
@@ -53,8 +61,20 @@ function setupWebSocket(server) {
         const c = clientCounts.get(userId) || 1;
         if (c <= 1) clientCounts.delete(userId);
         else clientCounts.set(userId, c - 1);
+
         const set = subs.get(simulationId);
-        if (set) { set.delete(ws); if (!set.size) subs.delete(simulationId); }
+        if (set) {
+          set.delete(ws);
+          if (!set.size) {
+            subs.delete(simulationId);
+            // Remove subscription tracking so the next client can re-subscribe.
+            subscribedSims.delete(simulationId);
+            const sub = getSubscriber();
+            sub.unsubscribe(`pubsub:sim:${simulationId}:rounds`, (err) => {
+              if (err) logger.error(`Redis unsubscribe error for sim=${simulationId}: ${err.message}`);
+            });
+          }
+        }
         clearInterval(heartbeat);
       });
 
@@ -82,7 +102,7 @@ function subscribeIfNeeded(simulationId) {
   subscribedSims.add(simulationId);
   sub.subscribe(`pubsub:sim:${simulationId}:rounds`, (err) => {
     if (err) {
-      subscribedSims.delete(simulationId); // allow retry on next connection
+      subscribedSims.delete(simulationId);  // allow retry on next connection
       logger.error(`Redis subscribe error for sim=${simulationId}: ${err.message}`);
       const clients = subs.get(simulationId);
       if (clients) {

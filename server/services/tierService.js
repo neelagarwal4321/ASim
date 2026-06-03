@@ -70,4 +70,11 @@ async function checkAndIncrementActive(userId, limits) {
   return { ok: true };
 }
 
-module.exports = { getTierLimits, checkAndIncrementDaily, checkAndIncrementActive };
+async function decrementActive(userId) {
+  const redis = getClient();
+  const key = `ratelimit:sim:active:${userId}`;
+  const val = await redis.decr(key);
+  if (val <= 0) await redis.del(key);
+}
+
+module.exports = { getTierLimits, checkAndIncrementDaily, checkAndIncrementActive, decrementActive };

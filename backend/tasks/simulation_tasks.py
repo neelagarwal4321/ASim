@@ -1,6 +1,12 @@
 import asyncio
 import logging
+import os
+import sys
 import redis as sync_redis
+
+_backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import update
 from tasks.celery_app import celery_app
