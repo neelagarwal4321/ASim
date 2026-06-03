@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import random
+import time
 from dataclasses import dataclass
 
 from agents.models import AgentProfile, AgentState, RoundAction
@@ -22,6 +23,9 @@ from simulation.round_log_builder import build_round_log
 from simulation.state_manager import StateManager
 
 logger = logging.getLogger(__name__)
+
+# Max simultaneous LLM requests — prevents thundering-herd on rate-limited APIs.
+_MAX_CONCURRENT_LLM = 20
 
 
 @dataclass
@@ -60,7 +64,6 @@ async def run_simulation(
     state_mgr = StateManager()
     for agent in agents:
         state = state_mgr.init_agent_state(agent.id)
-        # Initial stance varies by openness — skeptics start lower, open minds higher
         base = 0.30 + agent.trait_vector.openness * 0.40
         state.stance = max(0.0, min(1.0, base + rng.gauss(0, 0.12)))
         state_mgr.update_state(state)
@@ -75,7 +78,7 @@ async def run_simulation(
         logger.info("Round %d/%d", round_num, rounds)
         try:
             async with asyncio.timeout(300):
-                actions = await _run_round(
+                actions, avg_ms = await _run_round(
                     scenario=scenario,
                     agents=agents,
                     agent_map=agent_map,
@@ -122,10 +125,12 @@ async def run_simulation(
                     prev_cohesion=prev_cohesion,
                     prev_entropy=prev_entropy,
                     trust=state_mgr.get_all_trust(),
+                    avg_response_ms=avg_ms,
                 )
                 publish_round(simulation_id, {"type": envelope["type"], "payload": envelope["payload"]})
                 prev_cohesion = envelope["cohesion"]
                 prev_entropy = envelope["entropy"]
+                cumulative_events += envelope.get("event_count", 0)
                 if checkpoint_fn:
                     try:
                         checkpoint_fn(round_num)
@@ -218,12 +223,22 @@ async def _run_round(
     rng: random.Random,
     api_key: str | None,
     prior_distribution: dict | None = None,
-) -> list[RoundAction]:
-    all_ids = [a.id for a in agents]
-    actions: list[RoundAction] = []
+) -> tuple[list[RoundAction], float]:
+    """Run one round. Returns (actions, avg_response_ms).
 
+    All LLM calls run in parallel under a semaphore. Agents read state
+    from a round-start snapshot so earlier agents cannot influence later
+    agents' prompts within the same round.
+    """
+    all_ids = [a.id for a in agents]
+
+    # Snapshot round-start state so all agents act simultaneously.
+    snapshots: dict[str, AgentState] = {a.id: state_mgr.get_state(a.id) for a in agents}
+
+    # Compute all action selections and prompts upfront (sequential, fast, uses rng).
+    per_agent_inputs = []
     for agent in agents:
-        state = state_mgr.get_state(agent.id)
+        state = snapshots[agent.id]
         action_type, target_id = select_action(agent, state, all_ids, rng)
 
         trust_context = {
@@ -231,40 +246,68 @@ async def _run_round(
             for oid in all_ids
             if oid != agent.id
         }
-
         target_name = agent_map[target_id].name if target_id and target_id in agent_map else None
         static_sys, dynamic_ctx, user_msg = build_prompt(
             agent=agent, state=state, action=action_type, target_name=target_name,
             scenario=scenario, round_num=round_num,
             trust_scores=trust_context, total_rounds=total_rounds,
         )
+        per_agent_inputs.append((agent, state, action_type, target_id, static_sys, dynamic_ctx, user_msg))
 
-        free_text, json_data = "", {}
-        try:
-            raw = await llm_executor.complete(
-                user_message=user_msg,
-                static_system=static_sys,
-                dynamic_context=dynamic_ctx,
-                api_key=api_key,
-            )
-            free_text, json_data = parse_response(raw)
+    # Parallel LLM calls with concurrency cap.
+    semaphore = asyncio.Semaphore(_MAX_CONCURRENT_LLM)
 
-            if not json_data:
-                logger.warning("Agent %s round %d: retrying — no JSON", agent.id[:8], round_num)
-                retry_msg = (
-                    user_msg + "\n\nYour previous response was missing the required JSON block. "
-                    "Respond again and end with the JSON block exactly as specified."
-                )
+    async def _call_agent(
+        agent: AgentProfile,
+        state: AgentState,
+        action_type: str,
+        target_id: str | None,
+        static_sys: str,
+        dynamic_ctx: str,
+        user_msg: str,
+    ) -> tuple[tuple | None, float]:
+        async with semaphore:
+            t0 = time.monotonic()
+            free_text, json_data = "", {}
+            try:
                 raw = await llm_executor.complete(
-                    user_message=retry_msg, static_system=static_sys,
-                    dynamic_context=dynamic_ctx, api_key=api_key,
+                    user_message=user_msg,
+                    static_system=static_sys,
+                    dynamic_context=dynamic_ctx,
+                    api_key=api_key,
                 )
                 free_text, json_data = parse_response(raw)
 
-        except Exception as exc:
-            logger.error("Agent %s round %d LLM error: %s", agent.id[:8], round_num, exc)
-            continue
+                if not json_data:
+                    logger.warning("Agent %s round %d: retrying — no JSON", agent.id[:8], round_num)
+                    retry_msg = (
+                        user_msg + "\n\nYour previous response was missing the required JSON block. "
+                        "Respond again and end with the JSON block exactly as specified."
+                    )
+                    raw = await llm_executor.complete(
+                        user_message=retry_msg, static_system=static_sys,
+                        dynamic_context=dynamic_ctx, api_key=api_key,
+                    )
+                    free_text, json_data = parse_response(raw)
 
+            except Exception as exc:
+                logger.error("Agent %s round %d LLM error: %s", agent.id[:8], round_num, exc)
+                return None, time.monotonic() - t0
+
+            elapsed_ms = (time.monotonic() - t0) * 1000
+            return (agent, state, action_type, target_id, free_text, json_data), elapsed_ms
+
+    results = await asyncio.gather(*[
+        _call_agent(agent, state, action_type, target_id, static_sys, dynamic_ctx, user_msg)
+        for agent, state, action_type, target_id, static_sys, dynamic_ctx, user_msg in per_agent_inputs
+    ])
+
+    valid = [(payload, ms) for payload, ms in results if payload is not None]
+    avg_ms = sum(ms for _, ms in valid) / len(valid) if valid else 0.0
+
+    # Apply LLM-driven state updates sequentially (no concurrency concerns).
+    actions: list[RoundAction] = []
+    for (agent, state, action_type, target_id, free_text, json_data), _ in valid:
         if not json_data:
             logger.warning("Agent %s round %d: skipping after retry failure", agent.id[:8], round_num)
             continue
@@ -292,11 +335,16 @@ async def _run_round(
         )
         actions.append(round_action)
 
-        state.memory_text = update_memory(state, round_action, prior_distribution or {}, round_num)
+    # Persuasion runs on all post-LLM stances before memory is written.
+    _apply_persuasion(actions, agent_map, state_mgr)
+
+    # Memory written after persuasion so it reflects the final post-persuasion stance.
+    for action in actions:
+        state = state_mgr.get_state(action.agent_id)
+        state.memory_text = update_memory(state, action, prior_distribution or {}, round_num)
         state_mgr.update_state(state)
 
-    _apply_persuasion(actions, agent_map, state_mgr)
-    return actions
+    return actions, avg_ms
 
 
 def _apply_persuasion(
@@ -321,8 +369,10 @@ def _apply_persuasion(
         same = sum(1 for s in all_states if (s.stance >= 0.5) == (actor_state.stance >= 0.5))
         social_proof = same / n if n > 0 else 0.5
 
-        # Repetition bonus capped at 0.30
-        repetition_bonus = min(0.30, state_mgr.get_trust(action.agent_id, action.target_id) * 0.3)
+        # Repetition bonus: count of prior interactions, capped at 0.30.
+        # Approximated via interaction_count on the actor state.
+        prior_interactions = min(actor_state.interaction_count, 10)
+        repetition_bonus = min(0.30, prior_interactions * 0.03)
 
         delta = resolve_persuasion(
             actor=actor, actor_state=actor_state, actor_action=action,

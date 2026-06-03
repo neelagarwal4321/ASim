@@ -43,6 +43,46 @@ def _cohesion(stances: list[float]) -> float:
     return round(max(0.0, 1.0 - std / 0.5), 4)
 
 
+_EVENT_TAG_COLOR = {
+    "persuade":  "#FF6B00",
+    "challenge": "#FF2D55",
+    "debate":    "#0080FF",
+    "rally":     "#00FFCC",
+    "broadcast": "#9966FF",
+    "agree":     "#00FF7F",
+    "withdraw":  "#888888",
+    "abstain":   "#888888",
+}
+_HIGH_INFLUENCE_THRESHOLD = 0.08  # actions this significant surface as events
+_MAX_EVENTS_PER_ROUND = 5
+
+
+def _derive_events(
+    actions: list[RoundAction],
+    profile_by_id: dict,
+    round_num: int,
+) -> list[dict]:
+    """Surface notable persuasion actions as event feed entries."""
+    notable = [
+        a for a in actions
+        if a.argument_quality >= _HIGH_INFLUENCE_THRESHOLD and a.target_id
+    ]
+    notable.sort(key=lambda a: a.argument_quality, reverse=True)
+
+    events: list[dict] = []
+    for a in notable[:_MAX_EVENTS_PER_ROUND]:
+        target_profile = profile_by_id.get(a.target_id)
+        target_name = target_profile.name if target_profile else "an agent"
+        tag = a.action.capitalize()
+        events.append({
+            "tag": tag,
+            "tag_color": _EVENT_TAG_COLOR.get(a.action, "#888888"),
+            "time": f"R{round_num}",
+            "text": f"{a.name} {a.action}s {target_name} — \"{a.free_text[:80]}{'…' if len(a.free_text) > 80 else ''}\"",
+        })
+    return events
+
+
 def build_round_log(
     *,
     simulation_id: str,
@@ -125,7 +165,7 @@ def build_round_log(
         {"label": "Undecided", "pct": undecided_pct, "color": _OUTCOME_PALETTE["Undecided"]},
     ]
 
-    events: list[dict] = []  # Phase 2: derive significant persuasion events here.
+    events = _derive_events(actions, profile_by_id, round_num)
 
     # archetype_colors kept for callers that want to embed legend metadata,
     # but the frontend currently maps archetype -> color in the page.
@@ -143,7 +183,9 @@ def build_round_log(
             "events": events,
             "metrics": metrics,
             "outcomes": outcomes,
+            "distribution": distribution,
         },
         "cohesion": cohesion,
         "entropy": entropy,
+        "event_count": len(events),
     }

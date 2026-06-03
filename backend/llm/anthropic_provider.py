@@ -4,17 +4,24 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
+_REQUEST_TIMEOUT = 60.0  # seconds per individual LLM call
+
 
 class AnthropicProvider:
     def __init__(self) -> None:
         self._default_client = anthropic.AsyncAnthropic(
             api_key=settings.anthropic_api_key or None
         )
+        # Cache clients keyed by user-supplied API key to avoid creating a new
+        # HTTP connection pool per agent per round (100 agents = 100 pools otherwise).
+        self._client_cache: dict[str, anthropic.AsyncAnthropic] = {}
 
     def _get_client(self, api_key: str | None) -> anthropic.AsyncAnthropic:
-        if api_key:
-            return anthropic.AsyncAnthropic(api_key=api_key)
-        return self._default_client
+        if not api_key:
+            return self._default_client
+        if api_key not in self._client_cache:
+            self._client_cache[api_key] = anthropic.AsyncAnthropic(api_key=api_key)
+        return self._client_cache[api_key]
 
     async def complete(
         self,
@@ -44,5 +51,6 @@ class AnthropicProvider:
             max_tokens=1024,
             system=system_blocks if system_blocks else anthropic.NOT_GIVEN,
             messages=[{"role": "user", "content": user_message}],
+            timeout=_REQUEST_TIMEOUT,
         )
         return response.content[0].text

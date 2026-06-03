@@ -70,6 +70,6 @@ test('GET /api/v1/simulate returns empty list for demo session without database 
   const r = await request(app).get('/api/v1/simulate?page=1&limit=5').set(demoAuth());
 
   expect(r.status).toBe(200);
-  expect(r.body).toEqual({ simulations: [], page: 1, limit: 5 });
+  expect(r.body).toEqual({ data: [], meta: { page: 1, limit: 5, total: 0, has_more: false } });
   expect(query).not.toHaveBeenCalled();
 });

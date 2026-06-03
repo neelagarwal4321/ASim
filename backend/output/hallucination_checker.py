@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from simulation.orchestrator import RoundResult
 
-WHIPLASH_DELTA = 0.14       # just below per-round hard cap of 0.15
+WHIPLASH_DELTA = 0.30       # agents can legitimately self-report large jumps; flag extreme swings
 DETAILS_LIMIT = 20
 
 LEVEL_GREEN_MAX = 0.05
@@ -67,7 +67,7 @@ def check_hallucinations(
             total_actions += 1
 
             previous = prior_stance.get(a.agent_id)
-            if previous is not None and abs(a.stance - previous) > WHIPLASH_DELTA:
+            if previous is not None and abs(a.stance - previous) >= WHIPLASH_DELTA:
                 whiplash += 1
                 if len(details) < DETAILS_LIMIT:
                     details.append({

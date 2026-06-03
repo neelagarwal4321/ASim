@@ -3,6 +3,14 @@ from llm.executor import llm_executor
 
 logger = logging.getLogger(__name__)
 
+_NARRATIVE_SYSTEM = (
+    "You are a political analyst writing a concise narrative arc. "
+    "Write exactly 3-5 sentences describing how society responded to the scenario. "
+    "Focus on the emotional journey, key turning points, and why the outcome emerged. "
+    "Write in past tense, journalistic style. Be specific and vivid. "
+    "Do not include JSON or structured data — plain prose only."
+)
+
 
 async def generate_narrative(
     scenario: str,
@@ -18,14 +26,6 @@ async def generate_narrative(
         for rl in round_logs
     )
 
-    system = (
-        "You are a political analyst writing a concise narrative arc. "
-        "Write exactly 3-5 sentences describing how society responded to the scenario. "
-        "Focus on the emotional journey, key turning points, and why the outcome emerged. "
-        "Write in past tense, journalistic style. Be specific and vivid. "
-        "Do not include JSON or structured data — plain prose only."
-    )
-
     prompt = (
         f"Scenario: {scenario}\n\n"
         f"Round progression:\n{round_summaries}\n\n"
@@ -38,7 +38,7 @@ async def generate_narrative(
     try:
         narrative = await llm_executor.complete(
             user_message=prompt,
-            static_system=system,
+            static_system=_NARRATIVE_SYSTEM,
             api_key=api_key,
         )
         return narrative.strip()
